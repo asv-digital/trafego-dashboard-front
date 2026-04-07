@@ -130,6 +130,11 @@ export const api = {
   getActiveTests: () => fetcher<any>("/tests/active"),
   createTest: (data: any) => poster<any>("/tests/create", data),
   decideTest: (id: string, winner: string) => poster<any>(`/tests/${id}/decide`, { winner }),
+
+  // Campaign Builder
+  getTemplates: () => fetcher<any[]>("/campaign-builder/templates"),
+  uploadCreative: (data: any) => poster<any>("/campaign-builder/upload-creative", data),
+  buildCampaign: (data: any) => poster<any>("/campaign-builder/build", data),
 };
 
 // Types
