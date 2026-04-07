@@ -1,13 +1,16 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DollarSign,
   TrendingUp,
   Target,
   ShoppingCart,
-  BarChart3,
   MousePointerClick,
+  Eye,
+  Bot,
+  RefreshCw,
+  Clock,
 } from "lucide-react";
 import {
   LineChart,
@@ -31,6 +34,7 @@ import {
   formatRoas,
 } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,13 +42,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 function roasColor(value: number) {
   if (value >= 2) return "#50c878";
-  if (value >= 1.4) return "#e89b6a";
+  if (value >= 1.4) return "#f5c542";
   return "#e85040";
 }
 
 function cpaColor(value: number) {
   if (value < 50) return "#50c878";
-  if (value <= 70) return "#e89b6a";
+  if (value <= 70) return "#f5c542";
   return "#e85040";
 }
 
@@ -121,7 +125,7 @@ function KpiCard({ title, value, icon, color }: KpiCardProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Custom Tooltip
+// Custom Tooltips
 // ---------------------------------------------------------------------------
 
 function CpaTooltip({ active, payload, label }: any) {
@@ -159,28 +163,46 @@ function SalesTooltip({ active, payload, label }: any) {
 // ---------------------------------------------------------------------------
 
 export function OverviewTab() {
-  const {
-    data: overview,
-    isLoading: loadingOverview,
-  } = useQuery({
+  const queryClient = useQueryClient();
+
+  const { data: overview, isLoading: loadingOverview } = useQuery({
     queryKey: ["overview"],
     queryFn: api.getOverview,
+    refetchInterval: 60000,
   });
 
-  const {
-    data: metrics,
-    isLoading: loadingMetrics,
-  } = useQuery({
+  const { data: metrics, isLoading: loadingMetrics } = useQuery({
     queryKey: ["metrics"],
     queryFn: () => api.getMetrics(),
+    refetchInterval: 60000,
   });
 
-  const {
-    data: campaigns,
-    isLoading: loadingCampaigns,
-  } = useQuery({
+  const { data: campaigns, isLoading: loadingCampaigns } = useQuery({
     queryKey: ["campaigns"],
     queryFn: api.getCampaigns,
+    refetchInterval: 60000,
+  });
+
+  const { data: realtimeInsights } = useQuery({
+    queryKey: ["realtimeInsights"],
+    queryFn: api.getMetaRealtimeInsights,
+    refetchInterval: 60000,
+  });
+
+  const { data: agentStatus } = useQuery({
+    queryKey: ["agentStatus"],
+    queryFn: api.getAgentStatus,
+    refetchInterval: 60000,
+  });
+
+  const triggerMutation = useMutation({
+    mutationFn: api.triggerAgent,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agentStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["overview"] });
+      queryClient.invalidateQueries({ queryKey: ["metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["realtimeInsights"] });
+    },
   });
 
   if (loadingOverview || loadingMetrics || loadingCampaigns) {
@@ -191,6 +213,23 @@ export function OverviewTab() {
 
   if (!overview || !metrics || !campaigns) return null;
 
+  // Aggregate today's realtime data
+  const todaySpend = realtimeInsights?.reduce((sum: number, r: any) => sum + (Number(r.spend) || 0), 0) ?? 0;
+  const todaySales = realtimeInsights?.reduce((sum: number, r: any) => sum + (Number(r.actions?.find((a: any) => a.action_type === "purchase")?.value) || Number(r.purchases) || Number(r.sales) || 0), 0) ?? 0;
+  const todayClicks = realtimeInsights?.reduce((sum: number, r: any) => sum + (Number(r.clicks) || 0), 0) ?? 0;
+  const todayImpressions = realtimeInsights?.reduce((sum: number, r: any) => sum + (Number(r.impressions) || 0), 0) ?? 0;
+  const todayCPA = todaySales > 0 ? todaySpend / todaySales : 0;
+  const todayROAS = todaySpend > 0 ? (todaySales * 97) / todaySpend : 0;
+
+  // Use realtime data if available, otherwise fallback to overview
+  const hasRealtime = realtimeInsights && realtimeInsights.length > 0;
+  const displaySpend = hasRealtime ? todaySpend : overview.totalInvestment;
+  const displaySales = hasRealtime ? todaySales : overview.totalSales;
+  const displayROAS = hasRealtime ? todayROAS : overview.roas;
+  const displayCPA = hasRealtime ? todayCPA : overview.cpa;
+  const displayClicks = hasRealtime ? todayClicks : overview.totalClicks;
+  const displayImpressions = hasRealtime ? todayImpressions : overview.totalImpressions;
+
   const tsData = buildTimeSeriesData(metrics);
   const salesData = buildSalesByCampaign(campaigns);
 
@@ -199,127 +238,135 @@ export function OverviewTab() {
       {/* ---- KPI Cards ---- */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard
-          title="Investimento Total"
-          value={formatBRL(overview.totalInvestment)}
+          title={hasRealtime ? "Investimento Hoje" : "Investimento Total"}
+          value={formatBRL(displaySpend)}
           icon={<DollarSign className="h-5 w-5" />}
         />
         <KpiCard
-          title="Receita Total"
-          value={formatBRL(overview.totalRevenue)}
-          icon={<TrendingUp className="h-5 w-5" />}
-          color="#50c878"
-        />
-        <KpiCard
-          title="ROAS Geral"
-          value={formatRoas(overview.roas)}
-          icon={<Target className="h-5 w-5" />}
-          color={roasColor(overview.roas)}
-        />
-        <KpiCard
-          title="CPA Médio"
-          value={formatBRL(overview.cpa)}
+          title={hasRealtime ? "Vendas Hoje" : "Total de Vendas"}
+          value={formatNumber(displaySales)}
           icon={<ShoppingCart className="h-5 w-5" />}
-          color={cpaColor(overview.cpa)}
+          color={displaySales > 0 ? "#50c878" : "#ffffff"}
         />
         <KpiCard
-          title="Total de Vendas"
-          value={formatNumber(overview.totalSales)}
-          icon={<BarChart3 className="h-5 w-5" />}
+          title="ROAS Atual"
+          value={formatRoas(displayROAS)}
+          icon={<Target className="h-5 w-5" />}
+          color={roasColor(displayROAS)}
         />
         <KpiCard
-          title="Taxa de Conversão LP"
-          value={formatPercent(overview.conversionRate)}
+          title="CPA Atual"
+          value={displayCPA > 0 ? formatBRL(displayCPA) : "\u2014"}
+          icon={<TrendingUp className="h-5 w-5" />}
+          color={displayCPA > 0 ? cpaColor(displayCPA) : "#ffffff"}
+        />
+        <KpiCard
+          title={hasRealtime ? "Cliques Hoje" : "Total de Cliques"}
+          value={formatNumber(displayClicks)}
           icon={<MousePointerClick className="h-5 w-5" />}
+        />
+        <KpiCard
+          title={hasRealtime ? "Impressoes Hoje" : "Total de Impressoes"}
+          value={formatNumber(displayImpressions)}
+          icon={<Eye className="h-5 w-5" />}
         />
       </div>
 
       {/* ---- CPA Evolution ---- */}
       <Card className="border-[#1e1e1e] bg-[#111111]">
         <CardHeader>
-          <CardTitle className="text-white">Evolução do CPA</CardTitle>
+          <CardTitle className="text-white">Evolucao do CPA</CardTitle>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={320}>
-            <LineChart data={tsData}>
-              <CartesianGrid stroke="#1e1e1e" strokeDasharray="3 3" />
-              <XAxis
-                dataKey="date"
-                tick={{ fill: "#999", fontSize: 12 }}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fill: "#999", fontSize: 12 }}
-                tickLine={false}
-                tickFormatter={(v: number) => `R$${v}`}
-              />
-              <Tooltip content={<CpaTooltip />} />
-              <ReferenceLine
-                y={50}
-                stroke="#50c878"
-                strokeDasharray="4 4"
-                label={{ value: "Meta", fill: "#50c878", fontSize: 12 }}
-              />
-              <ReferenceLine
-                y={70}
-                stroke="#e85040"
-                strokeDasharray="4 4"
-                label={{ value: "Alerta", fill: "#e85040", fontSize: 12 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="cpa"
-                stroke="#e89b6a"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4, fill: "#e89b6a" }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {tsData.length === 0 ? (
+            <p className="py-8 text-center text-[#999]">Sem dados historicos ainda.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <LineChart data={tsData}>
+                <CartesianGrid stroke="#1e1e1e" strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: "#999", fontSize: 12 }}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fill: "#999", fontSize: 12 }}
+                  tickLine={false}
+                  tickFormatter={(v: number) => `R$${v}`}
+                />
+                <Tooltip content={<CpaTooltip />} />
+                <ReferenceLine
+                  y={50}
+                  stroke="#50c878"
+                  strokeDasharray="4 4"
+                  label={{ value: "Meta", fill: "#50c878", fontSize: 12 }}
+                />
+                <ReferenceLine
+                  y={70}
+                  stroke="#e85040"
+                  strokeDasharray="4 4"
+                  label={{ value: "Alerta", fill: "#e85040", fontSize: 12 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="cpa"
+                  stroke="#e89b6a"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, fill: "#e89b6a" }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 
       {/* ---- ROAS Evolution ---- */}
       <Card className="border-[#1e1e1e] bg-[#111111]">
         <CardHeader>
-          <CardTitle className="text-white">Evolução do ROAS</CardTitle>
+          <CardTitle className="text-white">Evolucao do ROAS</CardTitle>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={320}>
-            <LineChart data={tsData}>
-              <CartesianGrid stroke="#1e1e1e" strokeDasharray="3 3" />
-              <XAxis
-                dataKey="date"
-                tick={{ fill: "#999", fontSize: 12 }}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fill: "#999", fontSize: 12 }}
-                tickLine={false}
-                tickFormatter={(v: number) => `${v}x`}
-              />
-              <Tooltip content={<RoasTooltip />} />
-              <ReferenceLine
-                y={2}
-                stroke="#50c878"
-                strokeDasharray="4 4"
-                label={{ value: "Meta", fill: "#50c878", fontSize: 12 }}
-              />
-              <ReferenceLine
-                y={1.4}
-                stroke="#e85040"
-                strokeDasharray="4 4"
-                label={{ value: "Alerta", fill: "#e85040", fontSize: 12 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="roas"
-                stroke="#5b9bd5"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4, fill: "#5b9bd5" }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {tsData.length === 0 ? (
+            <p className="py-8 text-center text-[#999]">Sem dados historicos ainda.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <LineChart data={tsData}>
+                <CartesianGrid stroke="#1e1e1e" strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: "#999", fontSize: 12 }}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fill: "#999", fontSize: 12 }}
+                  tickLine={false}
+                  tickFormatter={(v: number) => `${v}x`}
+                />
+                <Tooltip content={<RoasTooltip />} />
+                <ReferenceLine
+                  y={2}
+                  stroke="#50c878"
+                  strokeDasharray="4 4"
+                  label={{ value: "Meta", fill: "#50c878", fontSize: 12 }}
+                />
+                <ReferenceLine
+                  y={1.4}
+                  stroke="#e85040"
+                  strokeDasharray="4 4"
+                  label={{ value: "Alerta", fill: "#e85040", fontSize: 12 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="roas"
+                  stroke="#5b9bd5"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, fill: "#5b9bd5" }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 
@@ -329,22 +376,70 @@ export function OverviewTab() {
           <CardTitle className="text-white">Vendas por Campanha</CardTitle>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={salesData}>
-              <CartesianGrid stroke="#1e1e1e" strokeDasharray="3 3" />
-              <XAxis
-                dataKey="name"
-                tick={{ fill: "#999", fontSize: 12 }}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fill: "#999", fontSize: 12 }}
-                tickLine={false}
-              />
-              <Tooltip content={<SalesTooltip />} />
-              <Bar dataKey="sales" fill="#e89b6a" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {salesData.length === 0 ? (
+            <p className="py-8 text-center text-[#999]">Sem dados de campanhas ainda.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={salesData}>
+                <CartesianGrid stroke="#1e1e1e" strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fill: "#999", fontSize: 12 }}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fill: "#999", fontSize: 12 }}
+                  tickLine={false}
+                />
+                <Tooltip content={<SalesTooltip />} />
+                <Bar dataKey="sales" fill="#e89b6a" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ---- Agent Status ---- */}
+      <Card className="border-[#1e1e1e] bg-[#111111]">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-white">
+            <Bot className="h-5 w-5 text-[#e89b6a]" />
+            Status do Agente
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{
+                backgroundColor: agentStatus?.running ? "#50c878" : "#71717a",
+              }}
+            />
+            <span className="text-sm text-[#999]">
+              {agentStatus?.running ? "Ativo" : "Inativo"}
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-center gap-6">
+            <div className="flex items-center gap-2 text-sm text-[#999]">
+              <Clock className="h-4 w-4" />
+              <span>Ultimo sync: {agentStatus?.lastSync ? formatDate(agentStatus.lastSync) : "Nunca"}</span>
+            </div>
+            {agentStatus?.nextSync && (
+              <div className="flex items-center gap-2 text-sm text-[#999]">
+                <Clock className="h-4 w-4" />
+                <span>Proximo sync: {formatDate(agentStatus.nextSync)}</span>
+              </div>
+            )}
+            <Button
+              onClick={() => triggerMutation.mutate()}
+              disabled={triggerMutation.isPending}
+              className="bg-[#e89b6a] text-[#0a0a0a] font-semibold hover:bg-[#d4864f]"
+              size="sm"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${triggerMutation.isPending ? "animate-spin" : ""}`} />
+              {triggerMutation.isPending ? "Sincronizando..." : "Sincronizar Agora"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

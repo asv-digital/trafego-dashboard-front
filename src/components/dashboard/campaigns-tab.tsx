@@ -2,9 +2,15 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import {
+  Plus,
+  Pause,
+  Play,
+  TrendingUp,
+  Loader2,
+} from "lucide-react";
 
-import { api, type Campaign, type CreateCampaignInput } from "@/lib/api";
+import { api, type Campaign } from "@/lib/api";
 import { formatBRL, formatPercent, formatRoas } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,46 +24,45 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const STATUSES = ["Ativa", "Pausada", "Matou", "Escalando", "Aprendizado"] as const;
-type CampaignStatus = (typeof STATUSES)[number];
-
-const STATUS_COLORS: Record<CampaignStatus, string> = {
-  Ativa: "#50c878",
-  Pausada: "#71717a",
-  Matou: "#e85040",
-  Escalando: "#5b9bd5",
-  Aprendizado: "#f5c542",
-};
-
-const TYPES = ["Remarketing", "Prospecção", "Escala"] as const;
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function statusBadge(status: string) {
-  const color = STATUS_COLORS[status as CampaignStatus] ?? "#71717a";
-  return (
-    <Badge
-      className="text-white border-none"
-      style={{ backgroundColor: color }}
-    >
-      {status}
-    </Badge>
-  );
+function metaStatusColor(status: string) {
+  switch (status?.toUpperCase()) {
+    case "ACTIVE":
+      return "#50c878";
+    case "PAUSED":
+      return "#71717a";
+    case "DELETED":
+    case "ARCHIVED":
+      return "#e85040";
+    default:
+      return "#f5c542";
+  }
 }
 
-function typeBadge(type: string) {
-  return (
-    <Badge variant="outline" className="text-[#e89b6a] border-[#e89b6a]/40">
-      {type}
-    </Badge>
-  );
+function metaStatusLabel(status: string) {
+  switch (status?.toUpperCase()) {
+    case "ACTIVE":
+      return "Ativa";
+    case "PAUSED":
+      return "Pausada";
+    case "DELETED":
+      return "Excluida";
+    case "ARCHIVED":
+      return "Arquivada";
+    default:
+      return status || "Desconhecido";
+  }
 }
 
 function cpaDot(cpa: number | null | undefined) {
@@ -74,77 +79,113 @@ function cpaDot(cpa: number | null | undefined) {
   );
 }
 
-function nextStatus(current: string): CampaignStatus {
-  const idx = STATUSES.indexOf(current as CampaignStatus);
-  if (idx === -1) return STATUSES[0];
-  return STATUSES[(idx + 1) % STATUSES.length];
-}
-
 // ---------------------------------------------------------------------------
 // Campaign Card
 // ---------------------------------------------------------------------------
 
 function CampaignCard({
   campaign,
-  onStatusChange,
+  liveCampaign,
+  onPause,
+  onActivate,
+  onScale,
+  isPending,
 }: {
   campaign: Campaign;
-  onStatusChange: (id: string, status: string) => void;
+  liveCampaign?: any;
+  onPause: (id: string) => void;
+  onActivate: (id: string) => void;
+  onScale: (campaign: Campaign) => void;
+  isPending: boolean;
 }) {
+  const liveStatus = liveCampaign?.status || liveCampaign?.effective_status || campaign.status;
+  const isActive = liveStatus?.toUpperCase() === "ACTIVE";
+  const metaId = liveCampaign?.id || campaign.id;
+
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="border-[#1e1e1e] bg-[#111111]">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-lg font-bold text-zinc-100">
-            {campaign.name}
+          <CardTitle className="text-lg font-bold text-white">
+            {liveCampaign?.name || campaign.name}
           </CardTitle>
-          <div className="flex items-center gap-2 shrink-0">
-            {typeBadge(campaign.type)}
-            {statusBadge(campaign.status)}
-          </div>
+          <Badge
+            className="text-white border-none shrink-0"
+            style={{ backgroundColor: metaStatusColor(liveStatus) }}
+          >
+            {metaStatusLabel(liveStatus)}
+          </Badge>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {/* Status cycle button */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-xs border-zinc-700 hover:border-[#e89b6a] hover:text-[#e89b6a]"
-          onClick={() =>
-            onStatusChange(campaign.id, nextStatus(campaign.status))
-          }
-        >
-          Mudar para: {nextStatus(campaign.status)}
-        </Button>
-
-        {/* Audience & Budget */}
-        {campaign.audience && (
-          <p className="text-sm text-zinc-400">
-            <span className="text-zinc-500">Público:</span> {campaign.audience}
+        {/* Meta info */}
+        <div className="space-y-1 text-sm text-[#999]">
+          {liveCampaign?.objective && (
+            <p>
+              <span className="text-[#666]">Objetivo:</span>{" "}
+              <span className="text-[#ccc]">{liveCampaign.objective}</span>
+            </p>
+          )}
+          <p>
+            <span className="text-[#666]">Orcamento:</span>{" "}
+            <span className="text-[#ccc]">{formatBRL(campaign.dailyBudget)}/dia</span>
           </p>
-        )}
-        <p className="text-sm text-zinc-400">
-          <span className="text-zinc-500">Orçamento:</span>{" "}
-          {formatBRL(campaign.dailyBudget)}/dia
-        </p>
+        </div>
 
-        {/* Aggregated Metrics */}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-2 border-t border-zinc-800">
-          <Metric label="Gasto Total" value={formatBRL(campaign.totalInvestment ?? 0)} />
-          <Metric label="Vendas" value={String(campaign.totalSales ?? 0)} />
-          <Metric
+        {/* Action Buttons */}
+        <div className="flex flex-wrap gap-2">
+          {isActive ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-[#e85040]/40 text-[#e85040] hover:bg-[#e85040]/10 hover:text-[#e85040]"
+              onClick={() => onPause(metaId)}
+              disabled={isPending}
+            >
+              <Pause className="h-3.5 w-3.5 mr-1" />
+              Pausar
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-[#50c878]/40 text-[#50c878] hover:bg-[#50c878]/10 hover:text-[#50c878]"
+              onClick={() => onActivate(metaId)}
+              disabled={isPending}
+            >
+              <Play className="h-3.5 w-3.5 mr-1" />
+              Ativar
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-[#5b9bd5]/40 text-[#5b9bd5] hover:bg-[#5b9bd5]/10 hover:text-[#5b9bd5]"
+            onClick={() => onScale(campaign)}
+            disabled={isPending}
+          >
+            <TrendingUp className="h-3.5 w-3.5 mr-1" />
+            Escalar 20%
+          </Button>
+        </div>
+
+        {/* Aggregated Metrics from DB */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-2 border-t border-[#1e1e1e]">
+          <MetricDisplay label="Gasto Total" value={formatBRL(campaign.totalInvestment ?? 0)} />
+          <MetricDisplay label="Vendas" value={String(campaign.totalSales ?? 0)} />
+          <MetricDisplay
             label="CPA"
-            value={campaign.cpa != null ? formatBRL(campaign.cpa) : "—"}
+            value={campaign.cpa != null ? formatBRL(campaign.cpa) : "\u2014"}
             trailing={cpaDot(campaign.cpa)}
           />
-          <Metric
+          <MetricDisplay
             label="ROAS"
-            value={campaign.roas != null ? formatRoas(campaign.roas) : "—"}
+            value={campaign.roas != null ? formatRoas(campaign.roas) : "\u2014"}
           />
-          <Metric
+          <MetricDisplay
             label="CTR"
-            value={campaign.ctr != null ? formatPercent(campaign.ctr) : "—"}
+            value={campaign.ctr != null ? formatPercent(campaign.ctr) : "\u2014"}
           />
         </div>
       </CardContent>
@@ -152,7 +193,7 @@ function CampaignCard({
   );
 }
 
-function Metric({
+function MetricDisplay({
   label,
   value,
   trailing,
@@ -163,167 +204,142 @@ function Metric({
 }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-xs text-zinc-500">{label}</span>
-      <span className="text-sm font-semibold text-zinc-200">{value}</span>
+      <span className="text-xs text-[#666]">{label}</span>
+      <span className="text-sm font-semibold text-[#ccc]">{value}</span>
       {trailing}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// New Campaign Form
+// Create Campaign Dialog
 // ---------------------------------------------------------------------------
 
-const INITIAL_FORM: CreateCampaignInput = {
-  name: "",
-  type: "Prospecção",
-  audience: "",
-  dailyBudget: 0,
-  startDate: new Date().toISOString().slice(0, 10),
-  status: "Ativa",
-};
+const OBJECTIVES = [
+  { value: "OUTCOME_SALES", label: "Vendas" },
+  { value: "OUTCOME_TRAFFIC", label: "Trafego" },
+  { value: "OUTCOME_AWARENESS", label: "Reconhecimento" },
+];
 
-function NewCampaignForm() {
+function CreateCampaignDialog() {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<CreateCampaignInput>({ ...INITIAL_FORM });
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [objective, setObjective] = useState("OUTCOME_SALES");
+  const [dailyBudget, setDailyBudget] = useState("");
+  const [status, setStatus] = useState("PAUSED");
 
   const mutation = useMutation({
-    mutationFn: (data: CreateCampaignInput) => api.createCampaign(data),
+    mutationFn: (data: any) => api.createMetaCampaign(data),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["metaLiveCampaigns"] });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-      setForm({ ...INITIAL_FORM });
+      setOpen(false);
+      resetForm();
     },
   });
 
-  function set<K extends keyof CreateCampaignInput>(
-    key: K,
-    value: CreateCampaignInput[K],
-  ) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+  function resetForm() {
+    setName("");
+    setObjective("OUTCOME_SALES");
+    setDailyBudget("");
+    setStatus("PAUSED");
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) return;
-    mutation.mutate(form);
+    if (!name.trim()) return;
+    mutation.mutate({
+      name: name.trim(),
+      objective,
+      daily_budget: Number(dailyBudget) || 0,
+      status,
+    });
   }
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
-      <CardHeader>
-        <CardTitle className="text-zinc-100">Nova Campanha</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {/* Nome */}
-          <div className="space-y-1.5">
-            <Label htmlFor="camp-name" className="text-zinc-400">
-              Nome
-            </Label>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger>
+        <Button className="bg-[#e89b6a] text-[#0a0a0a] font-semibold hover:bg-[#d4864f]">
+          <Plus className="h-4 w-4 mr-2" />
+          Criar Campanha
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="border-[#1e1e1e] bg-[#111111] text-white">
+        <DialogHeader>
+          <DialogTitle className="text-white">Nova Campanha Meta</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-[#999]">Nome da Campanha</Label>
             <Input
-              id="camp-name"
-              placeholder="Nome da campanha"
-              value={form.name}
-              onChange={(e) => set("name", e.target.value)}
-              className="bg-zinc-800 border-zinc-700 text-zinc-100"
+              placeholder="Ex: CAMP - Prospeccao Frio"
+              className="border-[#1e1e1e] bg-[#0a0a0a] text-white placeholder:text-[#555]"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
             />
           </div>
 
-          {/* Tipo */}
-          <div className="space-y-1.5">
-            <Label className="text-zinc-400">Tipo</Label>
-            <Select value={form.type} onValueChange={(val) => val && set("type", val)}>
-              <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100 w-full">
+          <div className="space-y-2">
+            <Label className="text-[#999]">Objetivo</Label>
+            <Select value={objective} onValueChange={(v) => v && setObjective(v)}>
+              <SelectTrigger className="w-full border-[#1e1e1e] bg-[#0a0a0a] text-white">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
-                {TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
+              <SelectContent className="border-[#1e1e1e] bg-[#111111]">
+                {OBJECTIVES.map((obj) => (
+                  <SelectItem key={obj.value} value={obj.value} className="text-white">
+                    {obj.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          {/* Público-alvo */}
-          <div className="space-y-1.5">
-            <Label htmlFor="camp-audience" className="text-zinc-400">
-              Público-alvo
-            </Label>
+          <div className="space-y-2">
+            <Label className="text-[#999]">Orcamento Diario R$</Label>
             <Input
-              id="camp-audience"
-              placeholder="Ex: Mulheres 25-45"
-              value={form.audience ?? ""}
-              onChange={(e) => set("audience", e.target.value)}
-              className="bg-zinc-800 border-zinc-700 text-zinc-100"
-            />
-          </div>
-
-          {/* Orçamento */}
-          <div className="space-y-1.5">
-            <Label htmlFor="camp-budget" className="text-zinc-400">
-              Orçamento diário R$
-            </Label>
-            <Input
-              id="camp-budget"
               type="number"
               min={0}
               step={0.01}
-              value={form.dailyBudget || ""}
-              onChange={(e) => set("dailyBudget", Number(e.target.value))}
-              className="bg-zinc-800 border-zinc-700 text-zinc-100"
+              placeholder="150.00"
+              className="border-[#1e1e1e] bg-[#0a0a0a] text-white placeholder:text-[#555]"
+              value={dailyBudget}
+              onChange={(e) => setDailyBudget(e.target.value)}
             />
           </div>
 
-          {/* Data de início */}
-          <div className="space-y-1.5">
-            <Label htmlFor="camp-start" className="text-zinc-400">
-              Data de início
-            </Label>
-            <Input
-              id="camp-start"
-              type="date"
-              value={form.startDate}
-              onChange={(e) => set("startDate", e.target.value)}
-              className="bg-zinc-800 border-zinc-700 text-zinc-100"
-            />
-          </div>
-
-          {/* Status inicial */}
-          <div className="space-y-1.5">
-            <Label className="text-zinc-400">Status inicial</Label>
-            <Select
-              value={form.status ?? "Ativa"}
-              onValueChange={(val) => val && set("status", val)}
-            >
-              <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100 w-full">
+          <div className="space-y-2">
+            <Label className="text-[#999]">Status Inicial</Label>
+            <Select value={status} onValueChange={(v) => v && setStatus(v)}>
+              <SelectTrigger className="w-full border-[#1e1e1e] bg-[#0a0a0a] text-white">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
-                {(["Ativa", "Aprendizado", "Pausada"] as const).map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ))}
+              <SelectContent className="border-[#1e1e1e] bg-[#111111]">
+                <SelectItem value="PAUSED" className="text-white">Pausada</SelectItem>
+                <SelectItem value="ACTIVE" className="text-white">Ativa</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {/* Submit */}
-          <div className="sm:col-span-2 lg:col-span-3 flex justify-end pt-2">
-            <Button
-              type="submit"
-              disabled={mutation.isPending || !form.name.trim()}
-              className="bg-[#e89b6a] hover:bg-[#d88a5a] text-zinc-950 font-semibold"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              {mutation.isPending ? "Criando..." : "Criar Campanha"}
-            </Button>
-          </div>
+          <Button
+            type="submit"
+            disabled={mutation.isPending || !name.trim()}
+            className="w-full bg-[#e89b6a] text-[#0a0a0a] font-semibold hover:bg-[#d4864f]"
+          >
+            {mutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Criando...
+              </>
+            ) : (
+              "Criar Campanha na Meta"
+            )}
+          </Button>
         </form>
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -334,46 +350,112 @@ function NewCampaignForm() {
 export default function CampaignsTab() {
   const queryClient = useQueryClient();
 
-  const { data: campaigns = [], isLoading } = useQuery({
+  const { data: campaigns = [], isLoading: loadingCampaigns } = useQuery({
     queryKey: ["campaigns"],
     queryFn: api.getCampaigns,
+    refetchInterval: 60000,
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.updateCampaign(id, { status }),
+  const { data: liveCampaigns = [] } = useQuery({
+    queryKey: ["metaLiveCampaigns"],
+    queryFn: api.getMetaLiveCampaigns,
+    refetchInterval: 60000,
+  });
+
+  const pauseMutation = useMutation({
+    mutationFn: (id: string) => api.updateCampaignStatus(id, "PAUSED"),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["metaLiveCampaigns"] });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
     },
   });
 
-  function handleStatusChange(id: string, status: string) {
-    updateMutation.mutate({ id, status });
-  }
+  const activateMutation = useMutation({
+    mutationFn: (id: string) => api.updateCampaignStatus(id, "ACTIVE"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["metaLiveCampaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+    },
+  });
+
+  const scaleMutation = useMutation({
+    mutationFn: (campaign: Campaign) => {
+      const newBudget = Math.round(campaign.dailyBudget * 1.2 * 100) / 100;
+      return api.updateAdsetBudget(campaign.id, newBudget);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["metaLiveCampaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+    },
+  });
+
+  const isPending = pauseMutation.isPending || activateMutation.isPending || scaleMutation.isPending;
+
+  // Merge live data with DB campaigns
+  const liveCampaignMap = new Map<string, any>();
+  liveCampaigns.forEach((lc: any) => {
+    liveCampaignMap.set(lc.id, lc);
+    liveCampaignMap.set(lc.name, lc);
+  });
 
   return (
     <div className="space-y-6">
+      {/* Header with Create Button */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-white">Campanhas</h2>
+        <CreateCampaignDialog />
+      </div>
+
       {/* Campaign Cards Grid */}
-      {isLoading ? (
-        <p className="text-zinc-500 text-center py-12">Carregando campanhas...</p>
-      ) : campaigns.length === 0 ? (
-        <p className="text-zinc-500 text-center py-12">
-          Nenhuma campanha cadastrada.
-        </p>
+      {loadingCampaigns ? (
+        <p className="text-[#999] text-center py-12">Carregando campanhas...</p>
+      ) : campaigns.length === 0 && liveCampaigns.length === 0 ? (
+        <Card className="border-[#1e1e1e] bg-[#111111]">
+          <CardContent className="py-12 text-center text-[#999]">
+            Nenhuma campanha encontrada. Crie uma campanha para comecar.
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {campaigns.map((c) => (
             <CampaignCard
               key={c.id}
               campaign={c}
-              onStatusChange={handleStatusChange}
+              liveCampaign={liveCampaignMap.get(c.id) || liveCampaignMap.get(c.name)}
+              onPause={(id) => pauseMutation.mutate(id)}
+              onActivate={(id) => activateMutation.mutate(id)}
+              onScale={(camp) => scaleMutation.mutate(camp)}
+              isPending={isPending}
             />
           ))}
+          {/* Show live-only campaigns not in DB */}
+          {liveCampaigns
+            .filter((lc: any) => !campaigns.some((c) => c.id === lc.id || c.name === lc.name))
+            .map((lc: any) => (
+              <CampaignCard
+                key={lc.id}
+                campaign={{
+                  id: lc.id,
+                  name: lc.name,
+                  type: lc.objective || "",
+                  audience: null,
+                  dailyBudget: Number(lc.daily_budget) / 100 || 0,
+                  startDate: lc.start_time || "",
+                  status: lc.status || lc.effective_status || "",
+                  createdAt: lc.created_time || "",
+                  updatedAt: lc.updated_time || "",
+                  metrics: [],
+                  creatives: [],
+                }}
+                liveCampaign={lc}
+                onPause={(id) => pauseMutation.mutate(id)}
+                onActivate={(id) => activateMutation.mutate(id)}
+                onScale={(camp) => scaleMutation.mutate(camp)}
+                isPending={isPending}
+              />
+            ))}
         </div>
       )}
-
-      {/* New Campaign Form */}
-      <NewCampaignForm />
     </div>
   );
 }

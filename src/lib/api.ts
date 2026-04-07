@@ -55,6 +55,25 @@ export const api = {
 
   // Alerts
   getAlerts: () => fetcher<Alert[]>("/alerts"),
+
+  // Meta Live Data (from Meta API directly)
+  getMetaLiveCampaigns: () => fetcher<any[]>("/meta-actions/campaigns/live"),
+  getMetaLiveAdsets: () => fetcher<any[]>("/meta-actions/adsets/live"),
+  getMetaRealtimeInsights: () => fetcher<any[]>("/meta-actions/insights/realtime"),
+  getMetaInsightsRange: (since: string, until: string, level?: string) =>
+    fetcher<any[]>(`/meta-actions/insights/range?since=${since}&until=${until}&level=${level || "campaign"}`),
+
+  // Meta Actions
+  createMetaCampaign: (data: any) => poster<any>("/meta-actions/campaigns/create", data),
+  createMetaAdset: (data: any) => poster<any>("/meta-actions/adsets/create", data),
+  updateCampaignStatus: (id: string, status: string) => patcher<any>(`/meta-actions/campaigns/${id}/status`, { status }),
+  updateAdsetStatus: (id: string, status: string) => patcher<any>(`/meta-actions/adsets/${id}/status`, { status }),
+  updateAdsetBudget: (id: string, daily_budget: number) => patcher<any>(`/meta-actions/adsets/${id}/budget`, { daily_budget }),
+
+  // Agent
+  getAgentStatus: () => fetcher<any>("/agent/status"),
+  triggerAgent: () => poster<any>("/agent/run", {}),
+  getAgentConfig: () => fetcher<any>("/agent/config"),
 };
 
 // Types

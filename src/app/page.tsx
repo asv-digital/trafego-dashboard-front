@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   BarChart3,
-  PenLine,
+  Activity,
   Megaphone,
   Palette,
   AlertTriangle,
@@ -11,7 +11,7 @@ import {
   Copy,
 } from "lucide-react";
 import { OverviewTab } from "@/components/dashboard/overview-tab";
-import { DataEntryTab } from "@/components/dashboard/data-entry-tab";
+import { RealtimeTab } from "@/components/dashboard/realtime-tab";
 import CampaignsTab from "@/components/dashboard/campaigns-tab";
 import { CreativesTab } from "@/components/dashboard/creatives-tab";
 import AlertsTab from "@/components/dashboard/alerts-tab";
@@ -19,12 +19,12 @@ import MethodTab from "@/components/dashboard/method-tab";
 import { api } from "@/lib/api";
 
 const tabs = [
-  { id: "overview", label: "Visão Geral", icon: BarChart3 },
-  { id: "data-entry", label: "Registrar Métricas", icon: PenLine },
+  { id: "overview", label: "Visao Geral", icon: BarChart3 },
+  { id: "realtime", label: "Tempo Real", icon: Activity },
   { id: "campaigns", label: "Campanhas", icon: Megaphone },
   { id: "creatives", label: "Criativos", icon: Palette },
   { id: "alerts", label: "Alertas", icon: AlertTriangle },
-  { id: "method", label: "Método", icon: BookOpen },
+  { id: "method", label: "Metodo", icon: BookOpen },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
@@ -107,7 +107,7 @@ export default function Home() {
       {/* Tab Content */}
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {activeTab === "overview" && <OverviewTab />}
-        {activeTab === "data-entry" && <DataEntryTab />}
+        {activeTab === "realtime" && <RealtimeTab />}
         {activeTab === "campaigns" && <CampaignsTab />}
         {activeTab === "creatives" && <CreativesTab />}
         {activeTab === "alerts" && <AlertsTab />}
