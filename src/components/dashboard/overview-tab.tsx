@@ -211,7 +211,9 @@ export function OverviewTab() {
     );
   }
 
-  if (!overview || !metrics || !campaigns) return null;
+  const safeOverview = overview ?? { totalInvestment: 0, totalRevenue: 0, totalSales: 0, totalClicks: 0, totalImpressions: 0, roas: 0, cpa: 0, conversionRate: 0 };
+  const safeMetrics = metrics ?? [];
+  const safeCampaigns = campaigns ?? [];
 
   // Aggregate today's realtime data
   const todaySpend = realtimeInsights?.reduce((sum: number, r: any) => sum + (Number(r.spend) || 0), 0) ?? 0;
@@ -223,15 +225,15 @@ export function OverviewTab() {
 
   // Use realtime data if available, otherwise fallback to overview
   const hasRealtime = realtimeInsights && realtimeInsights.length > 0;
-  const displaySpend = hasRealtime ? todaySpend : overview.totalInvestment;
-  const displaySales = hasRealtime ? todaySales : overview.totalSales;
-  const displayROAS = hasRealtime ? todayROAS : overview.roas;
-  const displayCPA = hasRealtime ? todayCPA : overview.cpa;
-  const displayClicks = hasRealtime ? todayClicks : overview.totalClicks;
-  const displayImpressions = hasRealtime ? todayImpressions : overview.totalImpressions;
+  const displaySpend = hasRealtime ? todaySpend : safeOverview.totalInvestment;
+  const displaySales = hasRealtime ? todaySales : safeOverview.totalSales;
+  const displayROAS = hasRealtime ? todayROAS : safeOverview.roas;
+  const displayCPA = hasRealtime ? todayCPA : safeOverview.cpa;
+  const displayClicks = hasRealtime ? todayClicks : safeOverview.totalClicks;
+  const displayImpressions = hasRealtime ? todayImpressions : safeOverview.totalImpressions;
 
-  const tsData = buildTimeSeriesData(metrics);
-  const salesData = buildSalesByCampaign(campaigns);
+  const tsData = buildTimeSeriesData(safeMetrics);
+  const salesData = buildSalesByCampaign(safeCampaigns);
 
   return (
     <div className="space-y-6">
@@ -410,11 +412,11 @@ export function OverviewTab() {
             <span
               className="h-2.5 w-2.5 rounded-full"
               style={{
-                backgroundColor: agentStatus?.running ? "#50c878" : "#71717a",
+                backgroundColor: agentStatus?.isRunning ? "#50c878" : "#71717a",
               }}
             />
             <span className="text-sm text-[#999]">
-              {agentStatus?.running ? "Ativo" : "Inativo"}
+              {agentStatus?.isRunning ? "Coletando..." : "Aguardando"}
             </span>
           </div>
         </CardHeader>
@@ -422,12 +424,12 @@ export function OverviewTab() {
           <div className="flex flex-wrap items-center gap-6">
             <div className="flex items-center gap-2 text-sm text-[#999]">
               <Clock className="h-4 w-4" />
-              <span>Ultimo sync: {agentStatus?.lastSync ? formatDate(agentStatus.lastSync) : "Nunca"}</span>
+              <span>Ultimo sync: {agentStatus?.lastRun ? formatDate(agentStatus.lastRun) : "Nunca"}</span>
             </div>
-            {agentStatus?.nextSync && (
+            {agentStatus?.nextRun && (
               <div className="flex items-center gap-2 text-sm text-[#999]">
                 <Clock className="h-4 w-4" />
-                <span>Proximo sync: {formatDate(agentStatus.nextSync)}</span>
+                <span>Proximo sync: {formatDate(agentStatus.nextRun)}</span>
               </div>
             )}
             <Button
