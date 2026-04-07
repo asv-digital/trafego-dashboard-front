@@ -74,6 +74,62 @@ export const api = {
   getAgentStatus: () => fetcher<any>("/agent/status"),
   triggerAgent: () => poster<any>("/agent/run", {}),
   getAgentConfig: () => fetcher<any>("/agent/config"),
+  getTokenStatus: () => fetcher<any>("/agent/token-status"),
+
+  // Sales
+  getSales: (params?: string) => fetcher<any>(`/sales${params ? `?${params}` : ""}`),
+  getSalesSummary: () => fetcher<any>("/sales/summary"),
+  getSalesByCampaign: () => fetcher<any>("/sales/by-campaign"),
+  getSalesByHour: () => fetcher<any>("/sales/by-hour"),
+  getSalesHeatmap: () => fetcher<any>("/sales/heatmap"),
+  getSalesLtv: () => fetcher<any>("/sales/ltv"),
+  getDiscrepancy: () => fetcher<any>("/sales/discrepancy"),
+  convertToMentoria: (id: string) => patcher<any>(`/sales/${id}/convert-mentoria`, {}),
+
+  // Metrics extended
+  getOverviewCompare: (period?: string) => fetcher<any>(`/metrics/overview?period=${period || "7d"}&compare=previous`),
+  getScore: () => fetcher<any>("/metrics/score"),
+  getScalingRules: () => fetcher<any>("/metrics/scaling-rules"),
+  getBudgetRebalance: () => fetcher<any>("/metrics/budget-rebalance"),
+  getAudienceOverlap: () => fetcher<any>("/metrics/audience-overlap"),
+  getFrequencyByAdset: () => fetcher<any>("/metrics/frequency-by-adset"),
+  getAscPerformance: () => fetcher<any>("/metrics/asc-performance"),
+
+  // Placement
+  getPlacementMetrics: (period?: string) => fetcher<any>(`/placement-metrics${period ? `?period=${period}` : ""}`),
+
+  // Pacing
+  getPacing: () => fetcher<any>("/meta-actions/insights/pacing"),
+
+  // Briefing
+  getDailyBriefing: () => fetcher<any>("/briefing/daily"),
+  getWeeklyBriefing: () => fetcher<any>("/briefing/weekly"),
+
+  // Profit
+  getProfit: (period?: string) => fetcher<any>(`/profit${period ? `?period=${period}` : ""}`),
+
+  // Goals
+  setGoal: (data: any) => poster<any>("/goals", data),
+  getGoalProgress: () => fetcher<any>("/goals/progress"),
+
+  // Health
+  getHealth: () => fetcher<any>("/health"),
+
+  // Actions log
+  getActionLog: (limit?: number) => fetcher<any>(`/actions/log${limit ? `?limit=${limit}` : ""}`),
+
+  // Creative lifecycle
+  getCreativeLifecycle: () => fetcher<any>("/creatives/lifecycle"),
+
+  // Notifications
+  getNotificationConfig: () => fetcher<any>("/notifications/config"),
+  setNotificationConfig: (data: any) => poster<any>("/notifications/config", data),
+  getNotificationLog: () => fetcher<any>("/notifications/log"),
+
+  // Tests A/B
+  getActiveTests: () => fetcher<any>("/tests/active"),
+  createTest: (data: any) => poster<any>("/tests/create", data),
+  decideTest: (id: string, winner: string) => poster<any>(`/tests/${id}/decide`, { winner }),
 };
 
 // Types

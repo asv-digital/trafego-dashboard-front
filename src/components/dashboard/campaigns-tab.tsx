@@ -8,10 +8,15 @@ import {
   Play,
   TrendingUp,
   Loader2,
+  Clock,
+  AlertTriangle,
+  Eye,
+  XCircle,
+  ArrowUpCircle,
 } from "lucide-react";
 
 import { api, type Campaign } from "@/lib/api";
-import { formatBRL, formatPercent, formatRoas } from "@/lib/format";
+import { formatBRL, formatPercent, formatRoas, formatNumber } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +36,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,6 +92,132 @@ function cpaDot(cpa: number | null | undefined) {
   );
 }
 
+function frequencyColor(freq: number): string {
+  if (freq < 2) return "#50c878";
+  if (freq < 3.5) return "#f5c542";
+  return "#e85040";
+}
+
+function frequencyLabel(freq: number): string {
+  if (freq < 2) return "Saudavel";
+  if (freq < 3.5) return "Atencao";
+  return "Saturado";
+}
+
+// ---------------------------------------------------------------------------
+// Scaling Recommendations Banner
+// ---------------------------------------------------------------------------
+
+function ScalingBanner() {
+  const queryClient = useQueryClient();
+  const { data: rules = [], isLoading } = useQuery({
+    queryKey: ["scalingRules"],
+    queryFn: api.getScalingRules,
+    refetchInterval: 60000,
+  });
+
+  const executeMutation = useMutation({
+    mutationFn: (rule: any) => {
+      if (rule.action === "pause" || rule.action === "kill") {
+        return api.updateCampaignStatus(rule.campaignId || rule.adsetId, "PAUSED");
+      }
+      if (rule.action === "scale") {
+        const newBudget = Math.round((rule.currentBudget || 100) * 1.2 * 100) / 100;
+        return api.updateAdsetBudget(rule.adsetId || rule.campaignId, newBudget);
+      }
+      return Promise.resolve(null);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scalingRules"] });
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["metaLiveCampaigns"] });
+    },
+  });
+
+  if (isLoading || !Array.isArray(rules) || rules.length === 0) return null;
+
+  const scaleRules = rules.filter((r: any) => r.action === "scale");
+  const watchRules = rules.filter((r: any) => r.action === "watch" || r.action === "observe");
+  const killRules = rules.filter(
+    (r: any) => r.action === "pause" || r.action === "kill"
+  );
+
+  function renderRuleCard(rule: any, color: string, borderColor: string, bgColor: string) {
+    const icon =
+      rule.action === "scale" ? (
+        <ArrowUpCircle className="h-4 w-4" />
+      ) : rule.action === "watch" || rule.action === "observe" ? (
+        <Eye className="h-4 w-4" />
+      ) : (
+        <XCircle className="h-4 w-4" />
+      );
+
+    const label =
+      rule.action === "scale"
+        ? "Escalar"
+        : rule.action === "watch" || rule.action === "observe"
+        ? "Observar"
+        : rule.action === "kill"
+        ? "Kill"
+        : "Pausar";
+
+    return (
+      <Card
+        key={rule.campaignId || rule.adsetId || rule.name}
+        className="border bg-[#111111]"
+        style={{ borderColor }}
+      >
+        <CardContent className="py-3 px-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <span style={{ color }}>{icon}</span>
+            <Badge style={{ backgroundColor: bgColor, color, border: "none" }}>
+              {label}
+            </Badge>
+          </div>
+          <p className="text-sm font-medium text-white">
+            {rule.campaignName || rule.name || "—"}
+          </p>
+          <p className="text-xs text-[#999]">{rule.reason || rule.message || ""}</p>
+          {(rule.action === "scale" || rule.action === "pause" || rule.action === "kill") && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs"
+              style={{ borderColor, color }}
+              onClick={() => executeMutation.mutate(rule)}
+              disabled={executeMutation.isPending}
+            >
+              {executeMutation.isPending ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : null}
+              Executar
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-semibold text-[#999] uppercase tracking-wide">
+        Recomendacoes de Scaling
+      </h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {scaleRules.map((r: any) =>
+          renderRuleCard(r, "#50c878", "#50c878/40", "#50c878/10")
+        )}
+        {watchRules.map((r: any) =>
+          renderRuleCard(r, "#f5c542", "#f5c542/40", "#f5c542/10")
+        )}
+        {killRules.map((r: any) =>
+          renderRuleCard(r, "#e85040", "#e85040/40", "#e85040/10")
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Campaign Card
 // ---------------------------------------------------------------------------
@@ -98,7 +237,8 @@ function CampaignCard({
   onScale: (campaign: Campaign) => void;
   isPending: boolean;
 }) {
-  const liveStatus = liveCampaign?.status || liveCampaign?.effective_status || campaign.status;
+  const liveStatus =
+    liveCampaign?.status || liveCampaign?.effective_status || campaign.status;
   const isActive = liveStatus?.toUpperCase() === "ACTIVE";
   const metaId = liveCampaign?.id || campaign.id;
 
@@ -176,16 +316,16 @@ function CampaignCard({
           <MetricDisplay label="Vendas" value={String(campaign.totalSales ?? 0)} />
           <MetricDisplay
             label="CPA"
-            value={campaign.cpa != null ? formatBRL(campaign.cpa) : "\u2014"}
+            value={campaign.cpa != null ? formatBRL(campaign.cpa) : "—"}
             trailing={cpaDot(campaign.cpa)}
           />
           <MetricDisplay
             label="ROAS"
-            value={campaign.roas != null ? formatRoas(campaign.roas) : "\u2014"}
+            value={campaign.roas != null ? formatRoas(campaign.roas) : "—"}
           />
           <MetricDisplay
             label="CTR"
-            value={campaign.ctr != null ? formatPercent(campaign.ctr) : "\u2014"}
+            value={campaign.ctr != null ? formatPercent(campaign.ctr) : "—"}
           />
         </div>
       </CardContent>
@@ -317,8 +457,12 @@ function CreateCampaignDialog() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="border-[#1e1e1e] bg-[#111111]">
-                <SelectItem value="PAUSED" className="text-white">Pausada</SelectItem>
-                <SelectItem value="ACTIVE" className="text-white">Ativa</SelectItem>
+                <SelectItem value="PAUSED" className="text-white">
+                  Pausada
+                </SelectItem>
+                <SelectItem value="ACTIVE" className="text-white">
+                  Ativa
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -340,6 +484,306 @@ function CreateCampaignDialog() {
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Budget Rebalance Section
+// ---------------------------------------------------------------------------
+
+function BudgetRebalanceSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["budgetRebalance"],
+    queryFn: api.getBudgetRebalance,
+    refetchInterval: 60000,
+  });
+
+  if (isLoading) return null;
+
+  const suggestions = Array.isArray(data?.suggestions) ? data.suggestions : Array.isArray(data) ? data : [];
+  if (suggestions.length === 0) return null;
+
+  return (
+    <Card className="border-[#1e1e1e] bg-[#111111]">
+      <CardHeader>
+        <CardTitle className="text-white">Rebalanceamento de Budget</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-[#1e1e1e] hover:bg-transparent">
+                <TableHead className="text-[#999]">AdSet</TableHead>
+                <TableHead className="text-right text-[#999]">Budget Atual</TableHead>
+                <TableHead className="text-right text-[#999]">Sugerido</TableHead>
+                <TableHead className="text-right text-[#999]">Variacao</TableHead>
+                <TableHead className="text-[#999]">Motivo</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {suggestions.map((s: any, idx: number) => {
+                const current = Number(s.currentBudget ?? s.current_budget ?? 0);
+                const suggested = Number(s.suggestedBudget ?? s.suggested_budget ?? 0);
+                const variation = current > 0 ? ((suggested - current) / current) * 100 : 0;
+                const isIncrease = variation > 0;
+
+                return (
+                  <TableRow
+                    key={s.adsetId || idx}
+                    className="border-[#1e1e1e] hover:bg-[#1a1a1a]"
+                    style={{
+                      backgroundColor: isIncrease
+                        ? "rgba(80, 200, 120, 0.05)"
+                        : variation < 0
+                        ? "rgba(232, 80, 64, 0.05)"
+                        : undefined,
+                    }}
+                  >
+                    <TableCell className="font-medium text-white">
+                      {s.adsetName || s.name || s.adsetId || "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-[#ccc]">
+                      {formatBRL(current)}
+                    </TableCell>
+                    <TableCell className="text-right text-[#ccc]">
+                      {formatBRL(suggested)}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold" style={{
+                      color: isIncrease ? "#50c878" : variation < 0 ? "#e85040" : "#999",
+                    }}>
+                      {isIncrease ? "+" : ""}{formatPercent(variation)}
+                    </TableCell>
+                    <TableCell className="text-[#999] text-sm">
+                      {s.reason || s.motivo || "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Placement Performance Section
+// ---------------------------------------------------------------------------
+
+function PlacementPerformanceSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["placementMetrics"],
+    queryFn: () => api.getPlacementMetrics(),
+    refetchInterval: 60000,
+  });
+
+  if (isLoading) return null;
+
+  const placements = Array.isArray(data?.placements) ? data.placements : Array.isArray(data) ? data : [];
+  if (placements.length === 0) return null;
+
+  // Find best/worst CPA
+  const cpas = placements
+    .map((p: any) => Number(p.cpa ?? 0))
+    .filter((c: number) => c > 0);
+  const bestCpa = cpas.length > 0 ? Math.min(...cpas) : null;
+  const worstCpa = cpas.length > 0 ? Math.max(...cpas) : null;
+
+  const insights = data?.insights || data?.summary || null;
+
+  return (
+    <Card className="border-[#1e1e1e] bg-[#111111]">
+      <CardHeader>
+        <CardTitle className="text-white">Performance por Posicionamento</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-[#1e1e1e] hover:bg-transparent">
+                <TableHead className="text-[#999]">Plataforma</TableHead>
+                <TableHead className="text-[#999]">Posicao</TableHead>
+                <TableHead className="text-right text-[#999]">CPM</TableHead>
+                <TableHead className="text-right text-[#999]">Cliques</TableHead>
+                <TableHead className="text-right text-[#999]">Conversoes</TableHead>
+                <TableHead className="text-right text-[#999]">CPA</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {placements.map((p: any, idx: number) => {
+                const cpa = Number(p.cpa ?? 0);
+                const isBest = bestCpa !== null && cpa === bestCpa && cpa > 0;
+                const isWorst = worstCpa !== null && cpa === worstCpa && cpa > 0;
+
+                return (
+                  <TableRow key={idx} className="border-[#1e1e1e] hover:bg-[#1a1a1a]">
+                    <TableCell className="text-white font-medium">
+                      {p.platform || p.publisher_platform || "—"}
+                    </TableCell>
+                    <TableCell className="text-[#ccc]">
+                      {p.position || p.platform_position || "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-[#ccc]">
+                      {formatBRL(Number(p.cpm ?? 0))}
+                    </TableCell>
+                    <TableCell className="text-right text-[#ccc]">
+                      {formatNumber(Number(p.clicks ?? 0))}
+                    </TableCell>
+                    <TableCell className="text-right text-[#ccc]">
+                      {formatNumber(Number(p.conversions ?? p.purchases ?? 0))}
+                    </TableCell>
+                    <TableCell
+                      className="text-right font-semibold"
+                      style={{
+                        color: isBest ? "#50c878" : isWorst ? "#e85040" : "#ccc",
+                      }}
+                    >
+                      {cpa > 0 ? formatBRL(cpa) : "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+
+        {insights && typeof insights === "string" && (
+          <p className="text-sm text-[#999] border-t border-[#1e1e1e] pt-3">{insights}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Frequency by AdSet Section
+// ---------------------------------------------------------------------------
+
+function FrequencyByAdsetSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["frequencyByAdset"],
+    queryFn: api.getFrequencyByAdset,
+    refetchInterval: 60000,
+  });
+
+  if (isLoading) return null;
+
+  const adsets = Array.isArray(data?.adsets) ? data.adsets : Array.isArray(data) ? data : [];
+  if (adsets.length === 0) return null;
+
+  return (
+    <Card className="border-[#1e1e1e] bg-[#111111]">
+      <CardHeader>
+        <CardTitle className="text-white">Frequencia por AdSet</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-[#1e1e1e] hover:bg-transparent">
+                <TableHead className="text-[#999]">AdSet</TableHead>
+                <TableHead className="text-right text-[#999]">Frequencia</TableHead>
+                <TableHead className="text-right text-[#999]">Impressoes</TableHead>
+                <TableHead className="text-right text-[#999]">Alcance</TableHead>
+                <TableHead className="text-[#999]">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {adsets.map((a: any, idx: number) => {
+                const freq = Number(a.frequency ?? 0);
+                return (
+                  <TableRow key={a.adsetId || idx} className="border-[#1e1e1e] hover:bg-[#1a1a1a]">
+                    <TableCell className="font-medium text-white">
+                      {a.adsetName || a.name || "—"}
+                    </TableCell>
+                    <TableCell
+                      className="text-right font-semibold"
+                      style={{ color: frequencyColor(freq) }}
+                    >
+                      {freq.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right text-[#ccc]">
+                      {formatNumber(Number(a.impressions ?? 0))}
+                    </TableCell>
+                    <TableCell className="text-right text-[#ccc]">
+                      {formatNumber(Number(a.reach ?? 0))}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className="border-none text-white"
+                        style={{ backgroundColor: frequencyColor(freq) }}
+                      >
+                        {frequencyLabel(freq)}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Action Log Timeline
+// ---------------------------------------------------------------------------
+
+function ActionLogTimeline() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["actionLog"],
+    queryFn: () => api.getActionLog(20),
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) return null;
+
+  const logs = Array.isArray(data?.logs) ? data.logs : Array.isArray(data) ? data : [];
+  if (logs.length === 0) return null;
+
+  return (
+    <Card className="border-[#1e1e1e] bg-[#111111]">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-white">
+          <Clock className="h-5 w-5 text-[#e89b6a]" />
+          Log de Acoes
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {logs.map((log: any, idx: number) => {
+            const time = log.timestamp || log.createdAt || log.time || "";
+            const formattedTime = time
+              ? new Date(time).toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "—";
+            const message = log.message || log.description || log.action || "—";
+
+            return (
+              <div key={log.id || idx} className="flex items-start gap-3">
+                <div className="flex flex-col items-center">
+                  <div className="h-2 w-2 rounded-full bg-[#e89b6a] mt-1.5" />
+                  {idx < logs.length - 1 && (
+                    <div className="w-px h-full min-h-[20px] bg-[#1e1e1e]" />
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2 pb-2">
+                  <span className="text-xs font-mono text-[#e89b6a] shrink-0">
+                    {formattedTime}
+                  </span>
+                  <span className="text-sm text-[#ccc]">{message}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -389,7 +833,8 @@ export default function CampaignsTab() {
     },
   });
 
-  const isPending = pauseMutation.isPending || activateMutation.isPending || scaleMutation.isPending;
+  const isPending =
+    pauseMutation.isPending || activateMutation.isPending || scaleMutation.isPending;
 
   // Merge live data with DB campaigns
   const liveCampaignMap = new Map<string, any>();
@@ -400,13 +845,16 @@ export default function CampaignsTab() {
 
   return (
     <div className="space-y-6">
-      {/* Header with Create Button */}
+      {/* ---- Scaling Recommendations ---- */}
+      <ScalingBanner />
+
+      {/* ---- Header with Create Button ---- */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-white">Campanhas</h2>
         <CreateCampaignDialog />
       </div>
 
-      {/* Campaign Cards Grid */}
+      {/* ---- Campaign Cards Grid ---- */}
       {loadingCampaigns ? (
         <p className="text-[#999] text-center py-12">Carregando campanhas...</p>
       ) : campaigns.length === 0 && liveCampaigns.length === 0 ? (
@@ -430,7 +878,9 @@ export default function CampaignsTab() {
           ))}
           {/* Show live-only campaigns not in DB */}
           {liveCampaigns
-            .filter((lc: any) => !campaigns.some((c) => c.id === lc.id || c.name === lc.name))
+            .filter(
+              (lc: any) => !campaigns.some((c) => c.id === lc.id || c.name === lc.name)
+            )
             .map((lc: any) => (
               <CampaignCard
                 key={lc.id}
@@ -456,6 +906,18 @@ export default function CampaignsTab() {
             ))}
         </div>
       )}
+
+      {/* ---- Budget Rebalance ---- */}
+      <BudgetRebalanceSection />
+
+      {/* ---- Placement Performance ---- */}
+      <PlacementPerformanceSection />
+
+      {/* ---- Frequency by AdSet ---- */}
+      <FrequencyByAdsetSection />
+
+      {/* ---- Action Log Timeline ---- */}
+      <ActionLogTimeline />
     </div>
   );
 }

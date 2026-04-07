@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DollarSign,
   TrendingUp,
+  TrendingDown,
   Target,
   ShoppingCart,
   MousePointerClick,
@@ -11,6 +13,13 @@ import {
   Bot,
   RefreshCw,
   Clock,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Zap,
+  Percent,
+  BarChart3,
+  Activity,
 } from "lucide-react";
 import {
   LineChart,
@@ -34,22 +43,76 @@ import {
   formatRoas,
 } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+
+// ---------------------------------------------------------------------------
+// Theme constants
+// ---------------------------------------------------------------------------
+
+const COLORS = {
+  bg: "#0a0a0a",
+  card: "#111111",
+  border: "#1e1e1e",
+  primary: "#e89b6a",
+  blue: "#5b9bd5",
+  green: "#50c878",
+  red: "#e85040",
+  yellow: "#f5c542",
+  muted: "#999999",
+  white: "#ffffff",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function roasColor(value: number) {
-  if (value >= 2) return "#50c878";
-  if (value >= 1.4) return "#f5c542";
-  return "#e85040";
+  if (value >= 2) return COLORS.green;
+  if (value >= 1.4) return COLORS.yellow;
+  return COLORS.red;
 }
 
 function cpaColor(value: number) {
-  if (value < 50) return "#50c878";
-  if (value <= 70) return "#f5c542";
-  return "#e85040";
+  if (value < 50) return COLORS.green;
+  if (value <= 70) return COLORS.yellow;
+  return COLORS.red;
+}
+
+function scoreColor(score: number) {
+  if (score >= 80) return COLORS.green;
+  if (score >= 60) return COLORS.yellow;
+  if (score >= 40) return COLORS.primary;
+  return COLORS.red;
+}
+
+function scoreLabel(score: number) {
+  if (score >= 80) return "Excelente";
+  if (score >= 60) return "Bom";
+  if (score >= 40) return "Regular";
+  return "Critico";
+}
+
+function variationArrow(variation: number, invertColor = false) {
+  const isPositive = variation > 0;
+  const color = invertColor
+    ? isPositive
+      ? COLORS.red
+      : COLORS.green
+    : isPositive
+      ? COLORS.green
+      : COLORS.red;
+  const arrow = isPositive ? (
+    <TrendingUp className="inline h-3 w-3" />
+  ) : (
+    <TrendingDown className="inline h-3 w-3" />
+  );
+  return (
+    <span className="inline-flex items-center gap-1 text-xs" style={{ color }}>
+      {arrow} {formatPercent(Math.abs(variation))}
+    </span>
+  );
 }
 
 interface DateAgg {
@@ -93,6 +156,85 @@ function buildSalesByCampaign(campaigns: Campaign[]) {
 }
 
 // ---------------------------------------------------------------------------
+// Semicircular Gauge SVG
+// ---------------------------------------------------------------------------
+
+function ScoreGauge({ score, color }: { score: number; color: string }) {
+  const radius = 70;
+  const cx = 90;
+  const cy = 85;
+  const circumference = Math.PI * radius;
+  const percentage = Math.min(Math.max(score / 100, 0), 1);
+  const offset = circumference * (1 - percentage);
+
+  return (
+    <svg width="180" height="110" viewBox="0 0 180 110">
+      {/* Background arc */}
+      <path
+        d={`M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`}
+        fill="none"
+        stroke={COLORS.border}
+        strokeWidth="12"
+        strokeLinecap="round"
+      />
+      {/* Score arc */}
+      <path
+        d={`M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`}
+        fill="none"
+        stroke={color}
+        strokeWidth="12"
+        strokeLinecap="round"
+        strokeDasharray={`${circumference}`}
+        strokeDashoffset={offset}
+        style={{ transition: "stroke-dashoffset 0.8s ease" }}
+      />
+      {/* Score number */}
+      <text
+        x={cx}
+        y={cy - 15}
+        textAnchor="middle"
+        fill={color}
+        fontSize="32"
+        fontWeight="bold"
+      >
+        {score}
+      </text>
+      {/* Label */}
+      <text
+        x={cx}
+        y={cy + 5}
+        textAnchor="middle"
+        fill={COLORS.muted}
+        fontSize="13"
+      >
+        {scoreLabel(score)}
+      </text>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mini bar for score breakdown
+// ---------------------------------------------------------------------------
+
+function MiniBar({ label, value, max = 100 }: { label: string; value: number; max?: number }) {
+  const pct = Math.min((value / max) * 100, 100);
+  const color = pct >= 70 ? COLORS.green : pct >= 40 ? COLORS.yellow : COLORS.red;
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-16 text-right" style={{ color: COLORS.muted }}>{label}</span>
+      <div className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: COLORS.border }}>
+        <div
+          className="h-1.5 rounded-full transition-all"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+      </div>
+      <span className="w-8 tabular-nums" style={{ color: COLORS.muted }}>{Math.round(value)}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // KPI Card
 // ---------------------------------------------------------------------------
 
@@ -101,24 +243,24 @@ interface KpiCardProps {
   value: string;
   icon: React.ReactNode;
   color?: string;
+  variation?: number | null;
+  invertVariation?: boolean;
 }
 
-function KpiCard({ title, value, icon, color }: KpiCardProps) {
+function KpiCard({ title, value, icon, color, variation, invertVariation }: KpiCardProps) {
   return (
     <Card className="border-[#1e1e1e] bg-[#111111]">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-[#999]">
-          {title}
-        </CardTitle>
+        <CardTitle className="text-sm font-medium text-[#999]">{title}</CardTitle>
         <span className="text-[#e89b6a]">{icon}</span>
       </CardHeader>
       <CardContent>
-        <p
-          className="text-2xl font-bold"
-          style={{ color: color ?? "#ffffff" }}
-        >
+        <p className="text-2xl font-bold" style={{ color: color ?? COLORS.white }}>
           {value}
         </p>
+        {variation != null && variation !== 0 && (
+          <div className="mt-1">{variationArrow(variation, invertVariation)}</div>
+        )}
       </CardContent>
     </Card>
   );
@@ -164,244 +306,469 @@ function SalesTooltip({ active, payload, label }: any) {
 
 export function OverviewTab() {
   const queryClient = useQueryClient();
+  const [weeklyOpen, setWeeklyOpen] = useState(false);
 
-  const { data: overview, isLoading: loadingOverview } = useQuery({
-    queryKey: ["overview"],
-    queryFn: api.getOverview,
-    refetchInterval: 60000,
+  const refetchOpts = { refetchInterval: 60000 };
+
+  // ---- Data fetching ----
+
+  const { data: tokenStatus } = useQuery({
+    queryKey: ["tokenStatus"],
+    queryFn: api.getTokenStatus,
+    ...refetchOpts,
+  });
+
+  const { data: briefing, isLoading: loadingBriefing } = useQuery({
+    queryKey: ["dailyBriefing"],
+    queryFn: api.getDailyBriefing,
+    ...refetchOpts,
+  });
+
+  const { data: weeklyBriefing, isLoading: loadingWeekly } = useQuery({
+    queryKey: ["weeklyBriefing"],
+    queryFn: api.getWeeklyBriefing,
+    enabled: weeklyOpen,
+  }) as any;
+
+  const { data: score, isLoading: loadingScore } = useQuery({
+    queryKey: ["score"],
+    queryFn: api.getScore,
+    ...refetchOpts,
+  });
+
+  const { data: goalProgress } = useQuery({
+    queryKey: ["goalProgress"],
+    queryFn: api.getGoalProgress,
+    ...refetchOpts,
+  });
+
+  const { data: overviewCompare, isLoading: loadingOverview } = useQuery({
+    queryKey: ["overviewCompare", "7d"],
+    queryFn: () => api.getOverviewCompare("7d"),
+    ...refetchOpts,
+  });
+
+  const { data: profit } = useQuery({
+    queryKey: ["profit"],
+    queryFn: () => api.getProfit(),
+    ...refetchOpts,
+  });
+
+  const { data: discrepancy } = useQuery({
+    queryKey: ["discrepancy"],
+    queryFn: api.getDiscrepancy,
+    ...refetchOpts,
   });
 
   const { data: metrics, isLoading: loadingMetrics } = useQuery({
     queryKey: ["metrics"],
     queryFn: () => api.getMetrics(),
-    refetchInterval: 60000,
+    ...refetchOpts,
   });
 
   const { data: campaigns, isLoading: loadingCampaigns } = useQuery({
     queryKey: ["campaigns"],
     queryFn: api.getCampaigns,
-    refetchInterval: 60000,
-  });
-
-  const { data: realtimeInsights } = useQuery({
-    queryKey: ["realtimeInsights"],
-    queryFn: api.getMetaRealtimeInsights,
-    refetchInterval: 60000,
+    ...refetchOpts,
   });
 
   const { data: agentStatus } = useQuery({
     queryKey: ["agentStatus"],
     queryFn: api.getAgentStatus,
-    refetchInterval: 60000,
+    ...refetchOpts,
+  });
+
+  const { data: health } = useQuery({
+    queryKey: ["health"],
+    queryFn: api.getHealth,
+    ...refetchOpts,
   });
 
   const triggerMutation = useMutation({
     mutationFn: api.triggerAgent,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agentStatus"] });
-      queryClient.invalidateQueries({ queryKey: ["overview"] });
+      queryClient.invalidateQueries({ queryKey: ["overviewCompare"] });
       queryClient.invalidateQueries({ queryKey: ["metrics"] });
-      queryClient.invalidateQueries({ queryKey: ["realtimeInsights"] });
+      queryClient.invalidateQueries({ queryKey: ["score"] });
+      queryClient.invalidateQueries({ queryKey: ["dailyBriefing"] });
     },
   });
 
-  if (loadingOverview || loadingMetrics || loadingCampaigns) {
-    return (
-      <p className="py-12 text-center text-[#999]">Carregando...</p>
-    );
-  }
+  // ---- Derived data ----
 
-  const safeOverview = overview ?? { totalInvestment: 0, totalRevenue: 0, totalSales: 0, totalClicks: 0, totalImpressions: 0, roas: 0, cpa: 0, conversionRate: 0 };
   const safeMetrics = metrics ?? [];
   const safeCampaigns = campaigns ?? [];
-
-  // Aggregate today's realtime data
-  const todaySpend = realtimeInsights?.reduce((sum: number, r: any) => sum + (Number(r.spend) || 0), 0) ?? 0;
-  const todaySales = realtimeInsights?.reduce((sum: number, r: any) => sum + (Number(r.actions?.find((a: any) => a.action_type === "purchase")?.value) || Number(r.purchases) || Number(r.sales) || 0), 0) ?? 0;
-  const todayClicks = realtimeInsights?.reduce((sum: number, r: any) => sum + (Number(r.clicks) || 0), 0) ?? 0;
-  const todayImpressions = realtimeInsights?.reduce((sum: number, r: any) => sum + (Number(r.impressions) || 0), 0) ?? 0;
-  const todayCPA = todaySales > 0 ? todaySpend / todaySales : 0;
-  const todayROAS = todaySpend > 0 ? (todaySales * 97) / todaySpend : 0;
-
-  // Use realtime data if available, otherwise fallback to overview
-  const hasRealtime = realtimeInsights && realtimeInsights.length > 0;
-  const displaySpend = hasRealtime ? todaySpend : safeOverview.totalInvestment;
-  const displaySales = hasRealtime ? todaySales : safeOverview.totalSales;
-  const displayROAS = hasRealtime ? todayROAS : safeOverview.roas;
-  const displayCPA = hasRealtime ? todayCPA : safeOverview.cpa;
-  const displayClicks = hasRealtime ? todayClicks : safeOverview.totalClicks;
-  const displayImpressions = hasRealtime ? todayImpressions : safeOverview.totalImpressions;
-
   const tsData = buildTimeSeriesData(safeMetrics);
   const salesData = buildSalesByCampaign(safeCampaigns);
 
+  const ov = overviewCompare?.current ?? overviewCompare ?? {};
+  const variations = overviewCompare?.variations ?? {};
+
+  // ---- Render ----
+
   return (
     <div className="space-y-6">
-      {/* ---- KPI Cards ---- */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <KpiCard
-          title={hasRealtime ? "Investimento Hoje" : "Investimento Total"}
-          value={formatBRL(displaySpend)}
-          icon={<DollarSign className="h-5 w-5" />}
-        />
-        <KpiCard
-          title={hasRealtime ? "Vendas Hoje" : "Total de Vendas"}
-          value={formatNumber(displaySales)}
-          icon={<ShoppingCart className="h-5 w-5" />}
-          color={displaySales > 0 ? "#50c878" : "#ffffff"}
-        />
-        <KpiCard
-          title="ROAS Atual"
-          value={formatRoas(displayROAS)}
-          icon={<Target className="h-5 w-5" />}
-          color={roasColor(displayROAS)}
-        />
-        <KpiCard
-          title="CPA Atual"
-          value={displayCPA > 0 ? formatBRL(displayCPA) : "\u2014"}
-          icon={<TrendingUp className="h-5 w-5" />}
-          color={displayCPA > 0 ? cpaColor(displayCPA) : "#ffffff"}
-        />
-        <KpiCard
-          title={hasRealtime ? "Cliques Hoje" : "Total de Cliques"}
-          value={formatNumber(displayClicks)}
-          icon={<MousePointerClick className="h-5 w-5" />}
-        />
-        <KpiCard
-          title={hasRealtime ? "Impressoes Hoje" : "Total de Impressoes"}
-          value={formatNumber(displayImpressions)}
-          icon={<Eye className="h-5 w-5" />}
-        />
-      </div>
+      {/* ================================================================ */}
+      {/* 1. TOKEN WARNING BANNER                                         */}
+      {/* ================================================================ */}
+      {tokenStatus && tokenStatus.status !== "ok" && (
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm font-medium ${
+            tokenStatus.status === "expired"
+              ? "animate-pulse border-red-700 bg-red-950 text-red-300"
+              : tokenStatus.status === "critical"
+                ? "border-red-700 bg-red-950 text-red-300"
+                : "border-yellow-700 bg-yellow-950 text-yellow-300"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {tokenStatus.status === "expired" && "Token EXPIRADO. Dashboard offline."}
+            {tokenStatus.status === "critical" &&
+              `URGENTE: Token expira em ${tokenStatus.days_remaining ?? "?"} dias!`}
+            {tokenStatus.status === "warning" &&
+              `Token Meta expira em ${tokenStatus.days_remaining ?? "?"} dias. Renovar em breve.`}
+          </div>
+        </div>
+      )}
 
-      {/* ---- CPA Evolution ---- */}
+      {/* ================================================================ */}
+      {/* 2. DAILY BRIEFING CARD                                          */}
+      {/* ================================================================ */}
+      {loadingBriefing ? (
+        <Card className="border-[#1e1e1e] bg-[#111111]">
+          <CardContent className="py-6">
+            <p className="text-sm text-[#999]">Carregando briefing...</p>
+          </CardContent>
+        </Card>
+      ) : briefing ? (
+        <Card
+          className="border-[#1e1e1e] bg-[#111111]"
+          style={{ borderLeftWidth: 3, borderLeftColor: COLORS.primary }}
+        >
+          <CardHeader className="flex flex-row items-center gap-3 pb-2">
+            <CardTitle className="text-white">Briefing do Dia</CardTitle>
+            {briefing.status === "atencao" && (
+              <Badge className="bg-red-900 text-red-300 hover:bg-red-900">Atencao</Badge>
+            )}
+            {briefing.status === "oportunidade" && (
+              <Badge className="bg-green-900 text-green-300 hover:bg-green-900">Oportunidade</Badge>
+            )}
+            {briefing.status === "estavel" && (
+              <Badge className="bg-blue-900 text-blue-300 hover:bg-blue-900">Estavel</Badge>
+            )}
+            {briefing.actions_count != null && briefing.actions_count > 0 && (
+              <Badge className="bg-[#e89b6a]/20 text-[#e89b6a] hover:bg-[#e89b6a]/20">
+                {briefing.actions_count} acoes
+              </Badge>
+            )}
+          </CardHeader>
+          <CardContent>
+            <p
+              className="text-sm leading-relaxed text-[#ccc]"
+              style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", whiteSpace: "pre-wrap" }}
+            >
+              {briefing.text ?? briefing.summary ?? "Sem briefing disponivel."}
+            </p>
+
+            <button
+              onClick={() => setWeeklyOpen((prev) => !prev)}
+              className="mt-4 flex items-center gap-1 text-xs text-[#e89b6a] hover:underline"
+            >
+              {weeklyOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              Ver briefing da semana
+            </button>
+
+            {weeklyOpen && (
+              <div className="mt-3 rounded-md border border-[#1e1e1e] bg-[#0a0a0a] p-3">
+                {loadingWeekly ? (
+                  <p className="text-xs text-[#999]">Carregando...</p>
+                ) : weeklyBriefing ? (
+                  <p
+                    className="text-xs leading-relaxed text-[#aaa]"
+                    style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", whiteSpace: "pre-wrap" }}
+                  >
+                    {weeklyBriefing.text ?? weeklyBriefing.summary ?? "Sem dados da semana."}
+                  </p>
+                ) : (
+                  <p className="text-xs text-[#999]">Sem briefing semanal disponivel.</p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* ================================================================ */}
+      {/* 3. OPERATION SCORE GAUGE                                        */}
+      {/* ================================================================ */}
+      {loadingScore ? (
+        <Card className="border-[#1e1e1e] bg-[#111111]">
+          <CardContent className="py-6">
+            <p className="text-sm text-[#999]">Carregando score...</p>
+          </CardContent>
+        </Card>
+      ) : score ? (
+        <Card className="border-[#1e1e1e] bg-[#111111]">
+          <CardHeader>
+            <CardTitle className="text-white">Score da Operacao</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:gap-8">
+              <ScoreGauge
+                score={score.score ?? score.total ?? 0}
+                color={scoreColor(score.score ?? score.total ?? 0)}
+              />
+              <div className="flex-1 space-y-2">
+                {score.breakdown && (
+                  <>
+                    <MiniBar label="CPA" value={score.breakdown.cpa ?? 0} />
+                    <MiniBar label="ROAS" value={score.breakdown.roas ?? 0} />
+                    <MiniBar label="CTR" value={score.breakdown.ctr ?? 0} />
+                    <MiniBar label="Freq" value={score.breakdown.frequency ?? 0} />
+                    <MiniBar label="Hook" value={score.breakdown.hook_rate ?? score.breakdown.hookRate ?? 0} />
+                    <MiniBar label="Criativos" value={score.breakdown.creatives ?? 0} />
+                  </>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* ================================================================ */}
+      {/* 4. GOAL PROGRESS BAR                                            */}
+      {/* ================================================================ */}
+      {goalProgress && goalProgress.status === "no_goal" ? (
+        <p className="text-xs text-[#666]">Nenhuma meta definida</p>
+      ) : goalProgress ? (
+        <Card className="border-[#1e1e1e] bg-[#111111]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-white">Meta Mensal</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="relative h-5 w-full overflow-hidden rounded-full" style={{ backgroundColor: COLORS.border }}>
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${Math.min(goalProgress.percent ?? 0, 100)}%`,
+                  backgroundColor: (goalProgress.percent ?? 0) >= 100 ? COLORS.green : COLORS.primary,
+                }}
+              />
+              {/* Ideal pace marker */}
+              {goalProgress.ideal_percent != null && (
+                <div
+                  className="absolute top-0 h-full w-0.5"
+                  style={{
+                    left: `${Math.min(goalProgress.ideal_percent, 100)}%`,
+                    backgroundColor: COLORS.white,
+                    opacity: 0.6,
+                  }}
+                  title={`Ritmo ideal: ${goalProgress.ideal_percent}%`}
+                />
+              )}
+            </div>
+            <p className="mt-2 text-xs text-[#999]">
+              {goalProgress.current ?? 0}/{goalProgress.target ?? 0} vendas (
+              {formatPercent(goalProgress.percent ?? 0, 0)})
+              {goalProgress.daily_needed != null && (
+                <span> | Precisa de {goalProgress.daily_needed} vendas/dia</span>
+              )}
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* ================================================================ */}
+      {/* 5. KPI CARDS GRID                                               */}
+      {/* ================================================================ */}
+      {loadingOverview ? (
+        <p className="py-8 text-center text-[#999]">Carregando...</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <KpiCard
+            title="Investimento"
+            value={formatBRL(ov.totalInvestment ?? ov.investment ?? 0)}
+            icon={<DollarSign className="h-5 w-5" />}
+            variation={variations.investment ?? null}
+          />
+          <KpiCard
+            title="Receita Liquida"
+            value={formatBRL(ov.totalRevenue ?? ov.revenue ?? 0)}
+            icon={<TrendingUp className="h-5 w-5" />}
+            color={COLORS.green}
+            variation={variations.revenue ?? null}
+          />
+          <KpiCard
+            title="Lucro"
+            value={formatBRL(profit?.profit ?? profit?.value ?? 0)}
+            icon={<Zap className="h-5 w-5" />}
+            color={(profit?.profit ?? profit?.value ?? 0) >= 0 ? COLORS.green : COLORS.red}
+            variation={profit?.variation ?? null}
+          />
+          <KpiCard
+            title="ROAS"
+            value={formatRoas(ov.roas ?? 0)}
+            icon={<Target className="h-5 w-5" />}
+            color={roasColor(ov.roas ?? 0)}
+            variation={variations.roas ?? null}
+          />
+          <KpiCard
+            title="CPA"
+            value={ov.cpa > 0 ? formatBRL(ov.cpa) : "\u2014"}
+            icon={<BarChart3 className="h-5 w-5" />}
+            color={ov.cpa > 0 ? cpaColor(ov.cpa) : COLORS.white}
+            variation={variations.cpa ?? null}
+            invertVariation
+          />
+          <KpiCard
+            title="Vendas"
+            value={formatNumber(ov.totalSales ?? ov.sales ?? 0)}
+            icon={<ShoppingCart className="h-5 w-5" />}
+            variation={variations.sales ?? null}
+          />
+          <KpiCard
+            title="Hook Rate"
+            value={ov.hookRate != null ? formatPercent(ov.hookRate) : "\u2014"}
+            icon={<MousePointerClick className="h-5 w-5" />}
+            variation={variations.hookRate ?? null}
+          />
+          <KpiCard
+            title="CPLPV"
+            value={ov.cplpv != null ? formatBRL(ov.cplpv) : "\u2014"}
+            icon={<Eye className="h-5 w-5" />}
+            variation={variations.cplpv ?? null}
+            invertVariation
+          />
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* 6. DISCREPANCY CARD                                             */}
+      {/* ================================================================ */}
+      {discrepancy && (discrepancy.discrepancy_percent ?? 0) > 5 && (
+        <Card className="border-[#1e1e1e] bg-[#111111]">
+          <CardHeader className="flex flex-row items-center gap-3 pb-2">
+            <CardTitle className="text-white">Discrepancia Meta vs Real</CardTitle>
+            <Badge className="bg-yellow-900 text-yellow-300 hover:bg-yellow-900">
+              Meta subreporta {formatPercent(discrepancy.discrepancy_percent ?? 0, 0)}
+            </Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div>
+                <p className="text-xs text-[#999]">CPA Meta</p>
+                <p className="text-lg font-bold text-white">
+                  {formatBRL(discrepancy.cpa_meta ?? 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-[#999]">CPA Real (Kirvano)</p>
+                <p className="text-lg font-bold text-white">
+                  {formatBRL(discrepancy.cpa_real ?? 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-[#999]">Vendas Meta</p>
+                <p className="text-lg font-bold text-white">
+                  {formatNumber(discrepancy.sales_meta ?? 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-[#999]">Vendas Real</p>
+                <p className="text-lg font-bold text-white">
+                  {formatNumber(discrepancy.sales_real ?? 0)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ================================================================ */}
+      {/* 7. CHARTS                                                       */}
+      {/* ================================================================ */}
+
+      {/* CPA Evolution */}
       <Card className="border-[#1e1e1e] bg-[#111111]">
         <CardHeader>
           <CardTitle className="text-white">Evolucao do CPA</CardTitle>
         </CardHeader>
         <CardContent>
-          {tsData.length === 0 ? (
+          {loadingMetrics ? (
+            <p className="py-8 text-center text-[#999]">Carregando...</p>
+          ) : tsData.length === 0 ? (
             <p className="py-8 text-center text-[#999]">Sem dados historicos ainda.</p>
           ) : (
             <ResponsiveContainer width="100%" height={320}>
               <LineChart data={tsData}>
                 <CartesianGrid stroke="#1e1e1e" strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fill: "#999", fontSize: 12 }}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fill: "#999", fontSize: 12 }}
-                  tickLine={false}
-                  tickFormatter={(v: number) => `R$${v}`}
-                />
+                <XAxis dataKey="date" tick={{ fill: "#999", fontSize: 12 }} tickLine={false} />
+                <YAxis tick={{ fill: "#999", fontSize: 12 }} tickLine={false} tickFormatter={(v: number) => `R$${v}`} />
                 <Tooltip content={<CpaTooltip />} />
-                <ReferenceLine
-                  y={50}
-                  stroke="#50c878"
-                  strokeDasharray="4 4"
-                  label={{ value: "Meta", fill: "#50c878", fontSize: 12 }}
-                />
-                <ReferenceLine
-                  y={70}
-                  stroke="#e85040"
-                  strokeDasharray="4 4"
-                  label={{ value: "Alerta", fill: "#e85040", fontSize: 12 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="cpa"
-                  stroke="#e89b6a"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4, fill: "#e89b6a" }}
-                />
+                <ReferenceLine y={50} stroke={COLORS.green} strokeDasharray="4 4" label={{ value: "Meta", fill: COLORS.green, fontSize: 12 }} />
+                <ReferenceLine y={70} stroke={COLORS.red} strokeDasharray="4 4" label={{ value: "Alerta", fill: COLORS.red, fontSize: 12 }} />
+                <Line type="monotone" dataKey="cpa" stroke={COLORS.primary} strokeWidth={2} dot={false} activeDot={{ r: 4, fill: COLORS.primary }} />
               </LineChart>
             </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
 
-      {/* ---- ROAS Evolution ---- */}
+      {/* ROAS Evolution */}
       <Card className="border-[#1e1e1e] bg-[#111111]">
         <CardHeader>
           <CardTitle className="text-white">Evolucao do ROAS</CardTitle>
         </CardHeader>
         <CardContent>
-          {tsData.length === 0 ? (
+          {loadingMetrics ? (
+            <p className="py-8 text-center text-[#999]">Carregando...</p>
+          ) : tsData.length === 0 ? (
             <p className="py-8 text-center text-[#999]">Sem dados historicos ainda.</p>
           ) : (
             <ResponsiveContainer width="100%" height={320}>
               <LineChart data={tsData}>
                 <CartesianGrid stroke="#1e1e1e" strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fill: "#999", fontSize: 12 }}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fill: "#999", fontSize: 12 }}
-                  tickLine={false}
-                  tickFormatter={(v: number) => `${v}x`}
-                />
+                <XAxis dataKey="date" tick={{ fill: "#999", fontSize: 12 }} tickLine={false} />
+                <YAxis tick={{ fill: "#999", fontSize: 12 }} tickLine={false} tickFormatter={(v: number) => `${v}x`} />
                 <Tooltip content={<RoasTooltip />} />
-                <ReferenceLine
-                  y={2}
-                  stroke="#50c878"
-                  strokeDasharray="4 4"
-                  label={{ value: "Meta", fill: "#50c878", fontSize: 12 }}
-                />
-                <ReferenceLine
-                  y={1.4}
-                  stroke="#e85040"
-                  strokeDasharray="4 4"
-                  label={{ value: "Alerta", fill: "#e85040", fontSize: 12 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="roas"
-                  stroke="#5b9bd5"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4, fill: "#5b9bd5" }}
-                />
+                <ReferenceLine y={2} stroke={COLORS.green} strokeDasharray="4 4" label={{ value: "Meta", fill: COLORS.green, fontSize: 12 }} />
+                <ReferenceLine y={1.4} stroke={COLORS.red} strokeDasharray="4 4" label={{ value: "Alerta", fill: COLORS.red, fontSize: 12 }} />
+                <Line type="monotone" dataKey="roas" stroke={COLORS.blue} strokeWidth={2} dot={false} activeDot={{ r: 4, fill: COLORS.blue }} />
               </LineChart>
             </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
 
-      {/* ---- Sales by Campaign ---- */}
+      {/* Sales by Campaign */}
       <Card className="border-[#1e1e1e] bg-[#111111]">
         <CardHeader>
           <CardTitle className="text-white">Vendas por Campanha</CardTitle>
         </CardHeader>
         <CardContent>
-          {salesData.length === 0 ? (
+          {loadingCampaigns ? (
+            <p className="py-8 text-center text-[#999]">Carregando...</p>
+          ) : salesData.length === 0 ? (
             <p className="py-8 text-center text-[#999]">Sem dados de campanhas ainda.</p>
           ) : (
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={salesData}>
                 <CartesianGrid stroke="#1e1e1e" strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fill: "#999", fontSize: 12 }}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fill: "#999", fontSize: 12 }}
-                  tickLine={false}
-                />
+                <XAxis dataKey="name" tick={{ fill: "#999", fontSize: 12 }} tickLine={false} />
+                <YAxis tick={{ fill: "#999", fontSize: 12 }} tickLine={false} />
                 <Tooltip content={<SalesTooltip />} />
-                <Bar dataKey="sales" fill="#e89b6a" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="sales" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
 
-      {/* ---- Agent Status ---- */}
+      {/* ================================================================ */}
+      {/* 8. AGENT STATUS CARD                                            */}
+      {/* ================================================================ */}
       <Card className="border-[#1e1e1e] bg-[#111111]">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-white">
@@ -412,7 +779,7 @@ export function OverviewTab() {
             <span
               className="h-2.5 w-2.5 rounded-full"
               style={{
-                backgroundColor: agentStatus?.isRunning ? "#50c878" : "#71717a",
+                backgroundColor: agentStatus?.isRunning ? COLORS.green : "#71717a",
               }}
             />
             <span className="text-sm text-[#999]">
@@ -444,6 +811,38 @@ export function OverviewTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ================================================================ */}
+      {/* 9. SYSTEM HEALTH INDICATOR                                      */}
+      {/* ================================================================ */}
+      {health && (
+        <div className="flex justify-end">
+          <Badge
+            className={`text-xs ${
+              health.status === "ok"
+                ? "bg-green-900/50 text-green-400 hover:bg-green-900/50"
+                : health.status === "degraded"
+                  ? "bg-yellow-900/50 text-yellow-400 hover:bg-yellow-900/50"
+                  : "bg-red-900/50 text-red-400 hover:bg-red-900/50"
+            }`}
+          >
+            <span
+              className="mr-1.5 inline-block h-2 w-2 rounded-full"
+              style={{
+                backgroundColor:
+                  health.status === "ok"
+                    ? COLORS.green
+                    : health.status === "degraded"
+                      ? COLORS.yellow
+                      : COLORS.red,
+              }}
+            />
+            {health.status === "ok" && "OK"}
+            {health.status === "degraded" && "Degradado"}
+            {health.status !== "ok" && health.status !== "degraded" && "Offline"}
+          </Badge>
+        </div>
+      )}
     </div>
   );
 }
