@@ -393,6 +393,12 @@ export function OverviewTab() {
     refetchInterval: 300000, // 5 min
   });
 
+  const { data: budgetAllocation } = useQuery({
+    queryKey: ["budgetAllocation"],
+    queryFn: api.getBudgetAllocation,
+    ...refetchOpts,
+  });
+
   const { data: funnel } = useQuery({
     queryKey: ["funnel"],
     queryFn: () => api.getFunnel("7d"),
@@ -925,6 +931,47 @@ export function OverviewTab() {
             {health.status === "degraded" && "Degradado"}
             {health.status !== "ok" && health.status !== "degraded" && "Offline"}
           </Badge>}
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* BUDGET ALLOCATION (Ponto 5)                                    */}
+      {/* ================================================================ */}
+      {budgetAllocation?.allocation && budgetAllocation.allocation.total > 0 && (
+        <div className="rounded-xl border border-[#1e1e1e] bg-[#111] p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-white">Alocacao de Budget</h3>
+            <span className="text-xs text-[#666]">R${budgetAllocation.allocation.total.toFixed(0)} / R${budgetAllocation.daily_target}</span>
+          </div>
+          <div className="flex h-6 rounded-full overflow-hidden bg-[#1e1e1e]">
+            {budgetAllocation.allocation.prospection > 0 && (
+              <div className="bg-blue-500 flex items-center justify-center text-[9px] text-white font-medium"
+                style={{ width: `${(budgetAllocation.allocation.prospection / budgetAllocation.daily_target) * 100}%` }}
+                title={`Prospeccao: R$${budgetAllocation.allocation.prospection.toFixed(0)}`}>
+                PROSP
+              </div>
+            )}
+            {budgetAllocation.allocation.remarketing > 0 && (
+              <div className="bg-purple-500 flex items-center justify-center text-[9px] text-white font-medium"
+                style={{ width: `${(budgetAllocation.allocation.remarketing / budgetAllocation.daily_target) * 100}%` }}
+                title={`Remarketing: R$${budgetAllocation.allocation.remarketing.toFixed(0)}`}>
+                RMK
+              </div>
+            )}
+            {budgetAllocation.allocation.asc > 0 && (
+              <div className="bg-orange-500 flex items-center justify-center text-[9px] text-white font-medium"
+                style={{ width: `${(budgetAllocation.allocation.asc / budgetAllocation.daily_target) * 100}%` }}
+                title={`ASC: R$${budgetAllocation.allocation.asc.toFixed(0)}`}>
+                ASC
+              </div>
+            )}
+          </div>
+          <div className="flex gap-4 mt-2 text-[10px]">
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500" />Prosp: R${budgetAllocation.allocation.prospection.toFixed(0)}</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-purple-500" />RMK: R${budgetAllocation.allocation.remarketing.toFixed(0)}</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-500" />ASC: R${budgetAllocation.allocation.asc.toFixed(0)}</span>
+            <span className="text-[#666]">Reserva: R${budgetAllocation.allocation.reserve.toFixed(0)}</span>
+          </div>
         </div>
       )}
 

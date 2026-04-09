@@ -191,6 +191,21 @@ export const api = {
 
   // Lookalike Audiences (Ponto 11)
   getLookalikes: () => fetcher<any>("/audiences/lookalikes"),
+
+  // Campaign Builder (Ponto 1)
+  getLaunchTemplates: () => fetcher<any>("/campaign-builder/launch-templates"),
+  getBuilderAudiences: () => fetcher<any>("/campaign-builder/audiences"),
+  getBuilderCampaigns: () => fetcher<any>("/campaign-builder/campaigns"),
+  uploadMedia: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return fetch(`${API_URL}/campaign-builder/upload`, { method: "POST", body: formData }).then(r => r.json());
+  },
+  previewCreative: (data: any) => poster<any>("/campaign-builder/preview", data),
+  launchCampaign: (data: any) => poster<any>("/campaign-builder/launch", data),
+
+  // Budget Allocation (Ponto 5)
+  getBudgetAllocation: () => fetcher<any>("/automations/budget-allocation"),
 };
 
 // Types

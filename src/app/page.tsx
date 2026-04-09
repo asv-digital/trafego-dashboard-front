@@ -10,6 +10,7 @@ import {
   BookOpen,
   Settings,
   Copy,
+  Rocket,
 } from "lucide-react";
 import { OverviewTab } from "@/components/dashboard/overview-tab";
 import { RealtimeTab } from "@/components/dashboard/realtime-tab";
@@ -18,11 +19,13 @@ import { CreativesTab } from "@/components/dashboard/creatives-tab";
 import AlertsTab from "@/components/dashboard/alerts-tab";
 import MethodTab from "@/components/dashboard/method-tab";
 import SettingsTab from "@/components/dashboard/settings-tab";
+import { LaunchTab } from "@/components/dashboard/launch-tab";
 import { ReportButton } from "@/components/dashboard/ceo-report";
 import { api } from "@/lib/api";
 
 const tabs = [
   { id: "overview", label: "Visao Geral", icon: BarChart3 },
+  { id: "launch", label: "Lancar", icon: Rocket },
   { id: "realtime", label: "Tempo Real", icon: Activity },
   { id: "campaigns", label: "Campanhas", icon: Megaphone },
   { id: "creatives", label: "Criativos", icon: Palette },
@@ -114,6 +117,7 @@ export default function Home() {
       {/* Tab Content */}
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {activeTab === "overview" && <OverviewTab />}
+        {activeTab === "launch" && <LaunchTab />}
         {activeTab === "realtime" && <RealtimeTab />}
         {activeTab === "campaigns" && <CampaignsTab />}
         {activeTab === "creatives" && <CreativesTab />}
