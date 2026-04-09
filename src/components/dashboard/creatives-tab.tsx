@@ -777,6 +777,92 @@ function ABTestsSection() {
 // Main Component
 // ---------------------------------------------------------------------------
 
+function CreativeStockCard() {
+  const { data: stock } = useQuery({ queryKey: ["creativeStock"], queryFn: api.getCreativeStock });
+  if (!stock) return null;
+
+  const color = stock.alert_level === "ok" ? "green" : stock.alert_level === "warning" ? "yellow" : "red";
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Archive className="h-4 w-4" />
+          Estoque de Criativos
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-4 mb-2">
+          <div className="text-center">
+            <p className="text-xl font-bold text-green-400">{stock.healthy_count}</p>
+            <p className="text-[10px] text-[#666]">Saudaveis</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xl font-bold text-yellow-400">{stock.declining_count}</p>
+            <p className="text-[10px] text-[#666]">Declinio</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xl font-bold text-red-400">{stock.exhausted_count}</p>
+            <p className="text-[10px] text-[#666]">Esgotados</p>
+          </div>
+          <div className="flex-1 text-right">
+            <Badge variant="outline" className={`border-${color}-500/30 bg-${color}-500/10 text-${color}-400`}>
+              {stock.alert_level === "ok" ? "OK" : stock.alert_level === "warning" ? "Atencao" : "Critico"}
+            </Badge>
+          </div>
+        </div>
+        {stock.days_until_crisis > 0 && (
+          <p className="text-xs text-[#999]">~{stock.days_until_crisis} dias ate precisar de novos criativos</p>
+        )}
+        <p className="text-xs text-[#666] mt-1">{stock.recommendation}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ThruplayCards() {
+  const { data } = useQuery({ queryKey: ["thruplay"], queryFn: api.getThruplayAnalysis });
+  if (!data?.creatives?.length) return null;
+
+  const withThruplay = data.creatives.filter((c: any) => c.current_thruplay !== null);
+  if (withThruplay.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Play className="h-4 w-4" />
+          ThruPlay Rate (15s+)
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {withThruplay.map((c: any) => (
+            <div key={c.id} className="flex items-center justify-between py-1 border-b border-[#1e1e1e]/50 last:border-0">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-white truncate">{c.name}</p>
+                {c.content_fatigue && (
+                  <p className="text-[10px] text-orange-400 mt-0.5">Fadiga de conteudo — refazer corpo do video</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {c.hook_rate !== null && <span className="text-[10px] text-[#666]">Hook {c.hook_rate}%</span>}
+                <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                  c.thruplay_status === "healthy" ? "bg-green-500/10 text-green-400" :
+                  c.thruplay_status === "warning" ? "bg-yellow-500/10 text-yellow-400" :
+                  "bg-red-500/10 text-red-400"
+                }`}>
+                  {c.current_thruplay}%
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function CreativesTab() {
   return (
     <div className="space-y-8">
@@ -786,6 +872,12 @@ export function CreativesTab() {
         <p className="text-sm text-[#999]">
           Criativos sao descobertos automaticamente pelo agente via Meta API
         </p>
+      </div>
+
+      {/* Creative Stock + ThruPlay (Pontos 7 e 8) */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <CreativeStockCard />
+        <ThruplayCards />
       </div>
 
       {/* Pipeline Summary */}

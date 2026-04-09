@@ -393,6 +393,18 @@ export function OverviewTab() {
     refetchInterval: 300000, // 5 min
   });
 
+  const { data: funnel } = useQuery({
+    queryKey: ["funnel"],
+    queryFn: () => api.getFunnel("7d"),
+    ...refetchOpts,
+  });
+
+  const { data: adDiagnostics } = useQuery({
+    queryKey: ["adDiagnostics"],
+    queryFn: () => api.getAdDiagnostics("7d"),
+    ...refetchOpts,
+  });
+
   const triggerMutation = useMutation({
     mutationFn: api.triggerAgent,
     onSuccess: () => {
@@ -895,6 +907,78 @@ export function OverviewTab() {
             {health.status === "degraded" && "Degradado"}
             {health.status !== "ok" && health.status !== "degraded" && "Offline"}
           </Badge>}
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* FUNNEL ANALYSIS (Ponto 5)                                      */}
+      {/* ================================================================ */}
+      {funnel?.funnel && (
+        <div className="rounded-xl border border-[#1e1e1e] bg-[#111] p-6">
+          <h3 className="text-sm font-bold text-white mb-4">Funil Completo (7d)</h3>
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {[
+              { label: "Impressoes", value: funnel.funnel.impressions, rate: null, bench: 0 },
+              { label: "Cliques", value: funnel.funnel.clicks, rate: funnel.rates.ctr, bench: 1.0 },
+              { label: "LP Views", value: funnel.funnel.lp_views, rate: funnel.rates.click_to_lp, bench: 70 },
+              { label: "Checkouts", value: funnel.funnel.checkouts, rate: funnel.rates.lp_to_checkout, bench: 5 },
+              { label: "Compras", value: funnel.funnel.purchases, rate: funnel.rates.checkout_to_purchase, bench: 30 },
+            ].map((step, i) => (
+              <div key={step.label} className="flex items-center gap-1">
+                {i > 0 && <span className="text-[#333] text-lg mx-1">{"\u2192"}</span>}
+                <div className="text-center min-w-[80px]">
+                  <p className="text-lg font-bold text-white">{typeof step.value === "number" ? step.value.toLocaleString("pt-BR") : "\u2014"}</p>
+                  <p className="text-[10px] text-[#666] uppercase">{step.label}</p>
+                  {step.rate !== null && (
+                    <p className={`text-[10px] font-medium ${step.rate >= step.bench ? "text-green-400" : "text-red-400"}`}>
+                      {step.rate}%
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          {funnel.diagnosis?.length > 0 && funnel.diagnosis[0]?.status !== "healthy" && (
+            <div className="mt-3 space-y-1">
+              {funnel.diagnosis.filter((d: any) => d.status !== "healthy").map((d: any, i: number) => (
+                <p key={i} className={`text-xs ${d.status === "critical" ? "text-red-400" : "text-yellow-400"}`}>
+                  {d.message}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* AD DIAGNOSTICS (Ponto 6)                                        */}
+      {/* ================================================================ */}
+      {adDiagnostics?.summary && adDiagnostics.summary.total_ads > 0 && (
+        adDiagnostics.summary.quality_issues > 0 || adDiagnostics.summary.engagement_issues > 0 || adDiagnostics.summary.conversion_issues > 0
+      ) && (
+        <div className="rounded-xl border border-[#1e1e1e] bg-[#111] p-6">
+          <h3 className="text-sm font-bold text-white mb-3">Diagnostico de Ads (7d)</h3>
+          <div className="flex gap-4 mb-3 text-xs">
+            <span className="text-[#999]">{adDiagnostics.summary.total_ads} ads analisados</span>
+            {adDiagnostics.summary.quality_issues > 0 && <span className="text-red-400">{adDiagnostics.summary.quality_issues} quality issues</span>}
+            {adDiagnostics.summary.engagement_issues > 0 && <span className="text-yellow-400">{adDiagnostics.summary.engagement_issues} engagement issues</span>}
+            {adDiagnostics.summary.conversion_issues > 0 && <span className="text-orange-400">{adDiagnostics.summary.conversion_issues} conversion issues</span>}
+          </div>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {adDiagnostics.ads?.filter((a: any) => a.priority !== "low").slice(0, 5).map((ad: any) => (
+              <div key={ad.adId} className="flex items-start justify-between gap-3 py-1.5 border-b border-[#1e1e1e]/50 last:border-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-white truncate">{ad.adName}</p>
+                  <p className="text-[10px] text-[#666] mt-0.5">{ad.diagnosis}</p>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${ad.quality?.includes("BELOW") ? "bg-red-500/10 text-red-400" : "bg-green-500/10 text-green-400"}`}>Q</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${ad.engagement?.includes("BELOW") ? "bg-red-500/10 text-red-400" : "bg-green-500/10 text-green-400"}`}>E</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${ad.conversion?.includes("BELOW") ? "bg-red-500/10 text-red-400" : "bg-green-500/10 text-green-400"}`}>C</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -169,6 +169,18 @@ export const api = {
 
   // Agent Heartbeat
   getHeartbeat: () => fetcher<any>("/agent/heartbeat"),
+
+  // Funnel Analysis (Ponto 5)
+  getFunnel: (period?: string) => fetcher<any>(`/metrics/funnel${period ? `?period=${period}` : ""}`),
+
+  // Ad Diagnostics (Ponto 6)
+  getAdDiagnostics: (period?: string) => fetcher<any>(`/metrics/ad-diagnostics${period ? `?period=${period}` : ""}`),
+
+  // Creative Stock (Ponto 7)
+  getCreativeStock: () => fetcher<any>("/creatives/stock"),
+
+  // ThruPlay Analysis (Ponto 8)
+  getThruplayAnalysis: () => fetcher<any>("/creatives/thruplay-analysis"),
 };
 
 // Types
