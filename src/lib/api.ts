@@ -145,6 +145,10 @@ export const api = {
   getTemplates: () => fetcher<any[]>("/campaign-builder/templates"),
   uploadCreative: (data: any) => poster<any>("/campaign-builder/upload-creative", data),
   buildCampaign: (data: any) => poster<any>("/campaign-builder/build", data),
+  distributeCreative: (data: any) => poster<any>("/campaign-builder/distribute", data),
+
+  // Event Match Quality
+  getEventMatchQuality: () => fetcher<any>("/agent/event-match-quality"),
 
   // Notification Config (WhatsApp)
   getNotifConfig: () => fetcher<any>("/notifications/config"),

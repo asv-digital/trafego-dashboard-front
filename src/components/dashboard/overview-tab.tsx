@@ -384,6 +384,12 @@ export function OverviewTab() {
     ...refetchOpts,
   });
 
+  const { data: emq } = useQuery({
+    queryKey: ["emq"],
+    queryFn: api.getEventMatchQuality,
+    refetchInterval: 300000, // 5 min
+  });
+
   const triggerMutation = useMutation({
     mutationFn: api.triggerAgent,
     onSuccess: () => {
@@ -815,9 +821,24 @@ export function OverviewTab() {
       {/* ================================================================ */}
       {/* 9. SYSTEM HEALTH INDICATOR                                      */}
       {/* ================================================================ */}
-      {health && (
-        <div className="flex justify-end">
-          <Badge
+      {(health || emq) && (
+        <div className="flex justify-end gap-2">
+          {emq && (
+            <Badge
+              className={`text-xs ${
+                emq.status === "good"
+                  ? "bg-green-900/50 text-green-400 hover:bg-green-900/50"
+                  : emq.status === "warning"
+                    ? "bg-yellow-900/50 text-yellow-400 hover:bg-yellow-900/50"
+                    : "bg-red-900/50 text-red-400 hover:bg-red-900/50"
+              }`}
+              title={emq.details}
+            >
+              EMQ: {emq.score?.toFixed(1) ?? "?"}
+              {emq.status === "good" ? " \u2713" : emq.status === "warning" ? " \u26a0" : " \ud83d\udd34"}
+            </Badge>
+          )}
+          {health && <Badge
             className={`text-xs ${
               health.status === "ok"
                 ? "bg-green-900/50 text-green-400 hover:bg-green-900/50"
@@ -840,7 +861,7 @@ export function OverviewTab() {
             {health.status === "ok" && "OK"}
             {health.status === "degraded" && "Degradado"}
             {health.status !== "ok" && health.status !== "degraded" && "Offline"}
-          </Badge>
+          </Badge>}
         </div>
       )}
     </div>
