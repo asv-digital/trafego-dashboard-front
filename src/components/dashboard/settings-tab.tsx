@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { MessageSquare, Bot, Send, Loader2, CheckCircle, XCircle, Info } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { MessageSquare, Bot, Send, Loader2, CheckCircle, XCircle, Info, Heart, Lock, Trash2, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 
 function Toggle({ label, description, checked, onChange }: {
@@ -66,6 +66,13 @@ export default function SettingsTab() {
   const [notifTestResult, setNotifTestResult] = useState<string | null>(null);
   const [notifLogs, setNotifLogs] = useState<any[]>([]);
 
+  // Heartbeat
+  const [heartbeat, setHeartbeat] = useState<any>(null);
+
+  // Automation locks
+  const [locks, setLocks] = useState<any[]>([]);
+  const [locksLoading, setLocksLoading] = useState(false);
+
   // Automation config
   const [autoPauseNoSales, setAutoPauseNoSales] = useState(true);
   const [autoPauseSpendLimit, setAutoPauseSpendLimit] = useState(200);
@@ -119,7 +126,25 @@ export default function SettingsTab() {
     }).catch(() => {});
 
     api.getNotifLog().then(setNotifLogs).catch(() => {});
+    api.getHeartbeat().then(setHeartbeat).catch(() => {});
+    loadLocks();
   }, []);
+
+  const loadLocks = useCallback(async () => {
+    setLocksLoading(true);
+    try {
+      const data = await api.getAutomationLocks();
+      setLocks(data.data || []);
+    } catch {}
+    setLocksLoading(false);
+  }, []);
+
+  const releaseLock = async (id: string) => {
+    try {
+      await api.deleteAutomationLock(id);
+      setLocks((prev) => prev.filter((l) => l.id !== id));
+    } catch {}
+  };
 
   const saveNotifConfig = async () => {
     setNotifSaving(true);
@@ -160,6 +185,124 @@ export default function SettingsTab() {
 
   return (
     <div className="space-y-6">
+      {/* Agent Heartbeat */}
+      {heartbeat && (
+        <div className="rounded-xl border border-[#1e1e1e] bg-[#111] p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Heart className="h-5 w-5 text-red-400" />
+            <h2 className="text-lg font-bold text-white">Status do Agente</h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+              heartbeat.status === "healthy" ? "bg-green-500/10 text-green-400 border border-green-500/30" :
+              heartbeat.status === "warning" ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30" :
+              heartbeat.status === "critical" ? "bg-red-500/10 text-red-400 border border-red-500/30" :
+              "bg-red-500/10 text-red-400 border border-red-500/30"
+            }`}>
+              <span className={`h-2 w-2 rounded-full ${
+                heartbeat.status === "healthy" ? "bg-green-400" :
+                heartbeat.status === "warning" ? "bg-yellow-400" : "bg-red-400"
+              }`} />
+              {heartbeat.status === "healthy" ? "Saudavel" :
+               heartbeat.status === "warning" ? "Warning" :
+               heartbeat.status === "critical" ? "Critico" : "Offline"}
+            </span>
+            {heartbeat.lastCollectionAt && (
+              <span className="text-xs text-[#666]">
+                Ultima coleta ha {heartbeat.hoursSinceCollection}h
+              </span>
+            )}
+            {heartbeat.consecutiveFailures > 0 && (
+              <span className="text-xs text-red-400">
+                {heartbeat.consecutiveFailures} falha(s) consecutiva(s)
+              </span>
+            )}
+            {heartbeat.dailySpendSoFar > 0 && (
+              <span className="text-xs text-[#999]">
+                Gasto hoje: R${heartbeat.dailySpendSoFar.toFixed(0)}
+              </span>
+            )}
+          </div>
+          {heartbeat.lastError && (
+            <p className="mt-2 text-xs text-red-400/80">Erro: {heartbeat.lastError}</p>
+          )}
+        </div>
+      )}
+
+      {/* Automation Locks */}
+      <div className="rounded-xl border border-[#1e1e1e] bg-[#111] p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <Lock className="h-5 w-5 text-yellow-400" />
+            <h2 className="text-lg font-bold text-white">Locks Ativos</h2>
+            <span className="text-xs text-[#666]">Coordenacao entre automacoes</span>
+          </div>
+          <button onClick={loadLocks} disabled={locksLoading} className="p-1.5 rounded-lg hover:bg-[#1e1e1e] transition-colors">
+            <RefreshCw className={`h-4 w-4 text-[#666] ${locksLoading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+
+        {locks.length === 0 ? (
+          <p className="text-sm text-[#666]">Nenhum lock ativo. Todas as automacoes podem agir livremente.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[#666] border-b border-[#1e1e1e]">
+                  <th className="text-left py-2 pr-4">Entidade</th>
+                  <th className="text-left py-2 pr-4">Bloqueado por</th>
+                  <th className="text-left py-2 pr-4">Acao</th>
+                  <th className="text-left py-2 pr-4">Budget</th>
+                  <th className="text-left py-2 pr-4">Expira em</th>
+                  <th className="text-right py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {locks.map((lock: any) => (
+                  <tr key={lock.id} className="border-b border-[#1e1e1e]/50">
+                    <td className="py-2 pr-4 text-white">
+                      <span className="text-[#666]">{lock.entityType}</span> {lock.entityId.slice(0, 12)}...
+                    </td>
+                    <td className="py-2 pr-4">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        lock.lockedBy === "ab_resolver" ? "bg-purple-500/10 text-purple-400" :
+                        lock.lockedBy === "auto_executor" ? "bg-blue-500/10 text-blue-400" :
+                        lock.lockedBy === "budget_rebalancer" ? "bg-green-500/10 text-green-400" :
+                        "bg-yellow-500/10 text-yellow-400"
+                      }`}>
+                        {lock.lockedBy}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-4 text-[#999]">{lock.action}</td>
+                    <td className="py-2 pr-4 text-[#999]">
+                      {lock.previousValue != null && lock.newValue != null
+                        ? `R$${lock.previousValue} → R$${lock.newValue}`
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-4">
+                      {lock.isExpired ? (
+                        <span className="text-red-400">Expirado</span>
+                      ) : (
+                        <span className="text-[#999]">{lock.expiresIn}min</span>
+                      )}
+                    </td>
+                    <td className="py-2 text-right">
+                      <button
+                        onClick={() => releaseLock(lock.id)}
+                        className="p-1 rounded hover:bg-red-500/10 transition-colors"
+                        title="Liberar lock"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* WhatsApp Notifications */}
       <div className="rounded-xl border border-[#1e1e1e] bg-[#111] p-6">
         <div className="flex items-center gap-3 mb-4">

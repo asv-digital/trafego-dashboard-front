@@ -162,6 +162,13 @@ export const api = {
   // Automation Config
   getAutomationConfig: () => fetcher<any>("/automations/config"),
   updateAutomationConfig: (data: any) => putter<any>("/automations/config", data),
+
+  // Automation Locks
+  getAutomationLocks: () => fetcher<any>("/automations/locks"),
+  deleteAutomationLock: (id: string) => deleter(`/automations/locks/${id}`),
+
+  // Agent Heartbeat
+  getHeartbeat: () => fetcher<any>("/agent/heartbeat"),
 };
 
 // Types
