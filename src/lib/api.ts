@@ -16,6 +16,16 @@ async function poster<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function putter<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
 async function patcher<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: "PATCH",
@@ -135,6 +145,16 @@ export const api = {
   getTemplates: () => fetcher<any[]>("/campaign-builder/templates"),
   uploadCreative: (data: any) => poster<any>("/campaign-builder/upload-creative", data),
   buildCampaign: (data: any) => poster<any>("/campaign-builder/build", data),
+
+  // Notification Config (WhatsApp)
+  getNotifConfig: () => fetcher<any>("/notifications/config"),
+  updateNotifConfig: (data: any) => putter<any>("/notifications/config", data),
+  getNotifLog: () => fetcher<any[]>("/notifications/log"),
+  testNotification: () => poster<any>("/notifications/test", {}),
+
+  // Automation Config
+  getAutomationConfig: () => fetcher<any>("/automations/config"),
+  updateAutomationConfig: (data: any) => putter<any>("/automations/config", data),
 };
 
 // Types

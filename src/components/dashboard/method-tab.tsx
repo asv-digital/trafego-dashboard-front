@@ -279,7 +279,7 @@ export default function MethodTab() {
             <TableBody>
               {[
                 {
-                  condicao: "CPA < R$50 por 2+ dias",
+                  condicao: "CPA < R$50 por 3+ dias consecutivos",
                   acao: "Escalar 20-30%",
                   detalhe: "Aumentar budget gradualmente",
                   color: "text-green-400",
@@ -291,7 +291,7 @@ export default function MethodTab() {
                   color: "text-yellow-400",
                 },
                 {
-                  condicao: "CPA > R$70 por 2+ dias",
+                  condicao: "CPA > R$70 por 3+ dias consecutivos",
                   acao: "Matar conjunto",
                   detalhe: "Pausar e redistribuir budget",
                   color: "text-red-400",

@@ -8,6 +8,7 @@ import {
   Palette,
   AlertTriangle,
   BookOpen,
+  Settings,
   Copy,
 } from "lucide-react";
 import { OverviewTab } from "@/components/dashboard/overview-tab";
@@ -16,6 +17,7 @@ import CampaignsTab from "@/components/dashboard/campaigns-tab";
 import { CreativesTab } from "@/components/dashboard/creatives-tab";
 import AlertsTab from "@/components/dashboard/alerts-tab";
 import MethodTab from "@/components/dashboard/method-tab";
+import SettingsTab from "@/components/dashboard/settings-tab";
 import { api } from "@/lib/api";
 
 const tabs = [
@@ -25,6 +27,7 @@ const tabs = [
   { id: "creatives", label: "Criativos", icon: Palette },
   { id: "alerts", label: "Alertas", icon: AlertTriangle },
   { id: "method", label: "Metodo", icon: BookOpen },
+  { id: "settings", label: "Config", icon: Settings },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
@@ -112,6 +115,7 @@ export default function Home() {
         {activeTab === "creatives" && <CreativesTab />}
         {activeTab === "alerts" && <AlertsTab />}
         {activeTab === "method" && <MethodTab />}
+        {activeTab === "settings" && <SettingsTab />}
       </main>
     </div>
   );

@@ -249,12 +249,23 @@ function CampaignCard({
           <CardTitle className="text-lg font-bold text-white">
             {liveCampaign?.name || campaign.name}
           </CardTitle>
-          <Badge
-            className="text-white border-none shrink-0"
-            style={{ backgroundColor: metaStatusColor(liveStatus) }}
-          >
-            {metaStatusLabel(liveStatus)}
-          </Badge>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {(campaign as any).isInLearningPhase && (
+              <Badge className="text-black bg-[#f5c542] border-none animate-pulse text-xs" title="O Meta está otimizando este conjunto. NÃO toque até a fase terminar.">
+                Em Aprendizado
+                {(campaign as any).learningPhaseEnd && (() => {
+                  const hrs = Math.max(0, Math.round((new Date((campaign as any).learningPhaseEnd).getTime() - Date.now()) / 3600000));
+                  return ` — ${hrs}h`;
+                })()}
+              </Badge>
+            )}
+            <Badge
+              className="text-white border-none"
+              style={{ backgroundColor: metaStatusColor(liveStatus) }}
+            >
+              {metaStatusLabel(liveStatus)}
+            </Badge>
+          </div>
         </div>
       </CardHeader>
 
@@ -275,39 +286,45 @@ function CampaignCard({
 
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-2">
-          {isActive ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-[#e85040]/40 text-[#e85040] hover:bg-[#e85040]/10 hover:text-[#e85040]"
-              onClick={() => onPause(metaId)}
-              disabled={isPending}
-            >
-              <Pause className="h-3.5 w-3.5 mr-1" />
-              Pausar
-            </Button>
+          {(campaign as any).isInLearningPhase ? (
+            <p className="text-xs text-[#f5c542] italic">Botões desabilitados durante a fase de aprendizado.</p>
           ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-[#50c878]/40 text-[#50c878] hover:bg-[#50c878]/10 hover:text-[#50c878]"
-              onClick={() => onActivate(metaId)}
-              disabled={isPending}
-            >
-              <Play className="h-3.5 w-3.5 mr-1" />
-              Ativar
-            </Button>
+            <>
+              {isActive ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-[#e85040]/40 text-[#e85040] hover:bg-[#e85040]/10 hover:text-[#e85040]"
+                  onClick={() => onPause(metaId)}
+                  disabled={isPending}
+                >
+                  <Pause className="h-3.5 w-3.5 mr-1" />
+                  Pausar
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-[#50c878]/40 text-[#50c878] hover:bg-[#50c878]/10 hover:text-[#50c878]"
+                  onClick={() => onActivate(metaId)}
+                  disabled={isPending}
+                >
+                  <Play className="h-3.5 w-3.5 mr-1" />
+                  Ativar
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-[#5b9bd5]/40 text-[#5b9bd5] hover:bg-[#5b9bd5]/10 hover:text-[#5b9bd5]"
+                onClick={() => onScale(campaign)}
+                disabled={isPending}
+              >
+                <TrendingUp className="h-3.5 w-3.5 mr-1" />
+                Escalar 20%
+              </Button>
+            </>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-[#5b9bd5]/40 text-[#5b9bd5] hover:bg-[#5b9bd5]/10 hover:text-[#5b9bd5]"
-            onClick={() => onScale(campaign)}
-            disabled={isPending}
-          >
-            <TrendingUp className="h-3.5 w-3.5 mr-1" />
-            Escalar 20%
-          </Button>
         </div>
 
         {/* Aggregated Metrics from DB */}
