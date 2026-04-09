@@ -405,6 +405,24 @@ export function OverviewTab() {
     ...refetchOpts,
   });
 
+  const { data: cpmTrend } = useQuery({
+    queryKey: ["cpmTrend"],
+    queryFn: () => api.getCpmTrend(30),
+    ...refetchOpts,
+  });
+
+  const { data: commentSummary } = useQuery({
+    queryKey: ["commentSummary"],
+    queryFn: api.getCommentSummary,
+    ...refetchOpts,
+  });
+
+  const { data: lookalikes } = useQuery({
+    queryKey: ["lookalikes"],
+    queryFn: api.getLookalikes,
+    ...refetchOpts,
+  });
+
   const triggerMutation = useMutation({
     mutationFn: api.triggerAgent,
     onSuccess: () => {
@@ -944,6 +962,114 @@ export function OverviewTab() {
                 <p key={i} className={`text-xs ${d.status === "critical" ? "text-red-400" : "text-yellow-400"}`}>
                   {d.message}
                 </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* CPM TREND (Ponto 9)                                             */}
+      {/* ================================================================ */}
+      {cpmTrend && cpmTrend.trend?.length > 0 && (
+        <div className="rounded-xl border border-[#1e1e1e] bg-[#111] p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-white">CPM Trend (30d)</h3>
+            {cpmTrend.is_market_spike && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/30">
+                Spike de mercado
+              </span>
+            )}
+          </div>
+          <div className="flex items-baseline gap-4 mb-3">
+            <div>
+              <p className="text-2xl font-bold text-white">R${cpmTrend.current_cpm?.toFixed(2)}</p>
+              <p className="text-[10px] text-[#666]">CPM atual</p>
+            </div>
+            <div>
+              <p className={`text-sm font-medium ${cpmTrend.variation?.startsWith("+") ? parseFloat(cpmTrend.variation) > 20 ? "text-red-400" : "text-yellow-400" : "text-green-400"}`}>
+                {cpmTrend.variation}
+              </p>
+              <p className="text-[10px] text-[#666]">vs media 30d (R${cpmTrend.avg_30d_cpm?.toFixed(2)})</p>
+            </div>
+          </div>
+          {cpmTrend.note && (
+            <p className={`text-xs ${cpmTrend.is_market_spike ? "text-yellow-400" : "text-[#999]"}`}>{cpmTrend.note}</p>
+          )}
+          <div className="flex items-end gap-[2px] mt-3 h-16">
+            {cpmTrend.trend.slice(-30).map((d: any, i: number) => {
+              const max = Math.max(...cpmTrend.trend.map((t: any) => t.cpm));
+              const h = max > 0 ? (d.cpm / max) * 100 : 0;
+              const aboveAvg = d.cpm > cpmTrend.avg_30d_cpm * 1.2;
+              return (
+                <div key={i} className="flex-1 min-w-[2px]" title={`${d.date}: R$${d.cpm.toFixed(2)}`}>
+                  <div className={`rounded-t-sm ${aboveAvg ? "bg-red-400/60" : "bg-[#e89b6a]/40"}`} style={{ height: `${h}%` }} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* COMMENT INSIGHTS (Ponto 10)                                     */}
+      {/* ================================================================ */}
+      {commentSummary?.data?.length > 0 && commentSummary.data.some((s: any) => s.recommendation) && (
+        <div className="rounded-xl border border-[#1e1e1e] bg-[#111] p-6">
+          <h3 className="text-sm font-bold text-white mb-3">Insights de Comentarios</h3>
+          <div className="space-y-2">
+            {commentSummary.data.filter((s: any) => s.recommendation).slice(0, 5).map((s: any) => (
+              <div key={s.id} className="py-2 border-b border-[#1e1e1e]/50 last:border-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-xs text-white font-medium truncate">{s.adName}</p>
+                  <span className="text-[10px] text-[#666]">{s.totalComments} comentarios</span>
+                  {s.tagFriend >= 5 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400">VIRAL</span>}
+                  {s.topObjection && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">{s.topObjection}</span>}
+                </div>
+                <p className="text-[10px] text-[#999]">{s.recommendation}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* LOOKALIKE STATUS (Ponto 11)                                     */}
+      {/* ================================================================ */}
+      {lookalikes && (
+        <div className="rounded-xl border border-[#1e1e1e] bg-[#111] p-6">
+          <h3 className="text-sm font-bold text-white mb-3">Lookalike Audiences</h3>
+          <div className="flex items-center gap-4 mb-3">
+            <div>
+              <p className="text-xl font-bold text-white">{lookalikes.buyer_count}</p>
+              <p className="text-[10px] text-[#666]">Compradores</p>
+            </div>
+            {lookalikes.next_milestone && (
+              <div className="flex-1">
+                <div className="flex justify-between text-[10px] text-[#666] mb-1">
+                  <span>Proximo marco: {lookalikes.next_milestone}</span>
+                  <span>Faltam {lookalikes.buyers_until_next}</span>
+                </div>
+                <div className="h-2 bg-[#1e1e1e] rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#e89b6a] rounded-full transition-all"
+                    style={{ width: `${lookalikes.next_milestone > 0 ? Math.min(100, (lookalikes.buyer_count / lookalikes.next_milestone) * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          {lookalikes.lookalikes?.length > 0 && (
+            <div className="space-y-1">
+              {lookalikes.lookalikes.map((l: any) => (
+                <div key={l.id} className="flex items-center justify-between py-1 text-xs">
+                  <span className="text-white">{l.name}</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                    l.status === "active" ? "bg-green-500/10 text-green-400" :
+                    l.status === "testing" ? "bg-yellow-500/10 text-yellow-400" :
+                    "bg-[#1e1e1e] text-[#666]"
+                  }`}>{l.status}</span>
+                </div>
               ))}
             </div>
           )}

@@ -181,6 +181,16 @@ export const api = {
 
   // ThruPlay Analysis (Ponto 8)
   getThruplayAnalysis: () => fetcher<any>("/creatives/thruplay-analysis"),
+
+  // CPM Trend (Ponto 9)
+  getCpmTrend: (days?: number) => fetcher<any>(`/metrics/cpm-trend${days ? `?days=${days}` : ""}`),
+
+  // Comment Analysis (Ponto 10)
+  getCommentSummary: () => fetcher<any>("/comments/summary"),
+  getCommentsByAd: (adId: string) => fetcher<any>(`/comments/by-ad/${adId}`),
+
+  // Lookalike Audiences (Ponto 11)
+  getLookalikes: () => fetcher<any>("/audiences/lookalikes"),
 };
 
 // Types
