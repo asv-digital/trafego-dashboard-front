@@ -18,6 +18,7 @@ import { CreativesTab } from "@/components/dashboard/creatives-tab";
 import AlertsTab from "@/components/dashboard/alerts-tab";
 import MethodTab from "@/components/dashboard/method-tab";
 import SettingsTab from "@/components/dashboard/settings-tab";
+import { ReportButton } from "@/components/dashboard/ceo-report";
 import { api } from "@/lib/api";
 
 const tabs = [
@@ -70,13 +71,16 @@ export default function Home() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleExportJSON}
-              className="flex items-center gap-2 rounded-lg border border-[#1e1e1e] bg-[#111] px-3 py-2 text-sm text-[#999] transition-colors hover:border-[#e89b6a] hover:text-[#e89b6a]"
-            >
-              <Copy className="h-4 w-4" />
-              <span className="hidden sm:inline">Exportar JSON</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <ReportButton />
+              <button
+                onClick={handleExportJSON}
+                className="flex items-center gap-2 rounded-lg border border-[#1e1e1e] bg-[#111] px-3 py-2 text-sm text-[#999] transition-colors hover:border-[#e89b6a] hover:text-[#e89b6a]"
+              >
+                <Copy className="h-4 w-4" />
+                <span className="hidden sm:inline">Exportar JSON</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>

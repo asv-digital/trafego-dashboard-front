@@ -150,6 +150,9 @@ export const api = {
   // Event Match Quality
   getEventMatchQuality: () => fetcher<any>("/agent/event-match-quality"),
 
+  // Reports
+  generateReport: (data: any) => poster<any>("/reports/generate", data),
+
   // Notification Config (WhatsApp)
   getNotifConfig: () => fetcher<any>("/notifications/config"),
   updateNotifConfig: (data: any) => putter<any>("/notifications/config", data),

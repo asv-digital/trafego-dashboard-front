@@ -342,9 +342,12 @@ export function OverviewTab() {
     ...refetchOpts,
   });
 
+  const [selectedPeriod, setSelectedPeriod] = useState("7d");
+  const [compareEnabled, setCompareEnabled] = useState(true);
+
   const { data: overviewCompare, isLoading: loadingOverview } = useQuery({
-    queryKey: ["overviewCompare", "7d"],
-    queryFn: () => api.getOverviewCompare("7d"),
+    queryKey: ["overviewCompare", selectedPeriod, compareEnabled],
+    queryFn: () => api.getOverviewCompare(selectedPeriod + (compareEnabled ? "" : "&compare=none")),
     ...refetchOpts,
   });
 
@@ -438,6 +441,36 @@ export function OverviewTab() {
           </div>
         </div>
       )}
+
+      {/* ================================================================ */}
+      {/* PERIOD SELECTOR                                                 */}
+      {/* ================================================================ */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex rounded-lg border border-[#1e1e1e] bg-[#111] overflow-hidden">
+          {(["7d", "14d", "30d", "month"] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => setSelectedPeriod(p)}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                selectedPeriod === p
+                  ? "bg-[#e89b6a] text-black"
+                  : "text-[#999] hover:text-white hover:bg-[#1e1e1e]"
+              }`}
+            >
+              {p === "7d" ? "7 dias" : p === "14d" ? "14 dias" : p === "30d" ? "30 dias" : "Mes"}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-1.5 text-xs text-[#999] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={compareEnabled}
+            onChange={(e) => setCompareEnabled(e.target.checked)}
+            className="rounded border-[#333] bg-[#111] accent-[#e89b6a]"
+          />
+          Comparar com periodo anterior
+        </label>
+      </div>
 
       {/* ================================================================ */}
       {/* 2. DAILY BRIEFING CARD                                          */}
