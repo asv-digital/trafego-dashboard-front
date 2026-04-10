@@ -48,7 +48,10 @@ export function LaunchTab() {
   const [launching, setLaunching] = useState(false);
   const [launchResult, setLaunchResult] = useState<any>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
-  const [launchSteps, setLaunchSteps] = useState<string[]>([]);
+  const [launchHint, setLaunchHint] = useState<string | null>(null);
+  const [launchSteps, setLaunchSteps] = useState<any[]>([]);
+  const [launchLog, setLaunchLog] = useState<string[]>([]);
+  const [showLog, setShowLog] = useState(false);
 
   // Data queries
   const { data: templates } = useQuery({ queryKey: ["launchTemplates"], queryFn: api.getLaunchTemplates });
@@ -85,13 +88,11 @@ export function LaunchTab() {
     if (!creativeId) return;
     setLaunching(true);
     setLaunchError(null);
+    setLaunchHint(null);
     setLaunchSteps([]);
+    setLaunchLog([]);
 
     try {
-      setLaunchSteps(s => [...s, "Verificando budget..."]);
-      await new Promise(r => setTimeout(r, 500));
-
-      setLaunchSteps(s => [...s, "Criando campanha..."]);
       const result = await api.launchCampaign({
         creativeId,
         campaignType,
@@ -104,15 +105,15 @@ export function LaunchTab() {
         abVariantCreativeId: campaignType === "TESTE_AB" ? abCreativeId : undefined,
       });
 
-      if (result.error) throw new Error(result.error);
+      // Backend retorna steps sempre (sucesso ou erro)
+      if (result.steps) setLaunchSteps(result.steps);
+      if (result.log) setLaunchLog(result.log);
 
-      setLaunchSteps(s => [...s, "Criando ad set..."]);
-      await new Promise(r => setTimeout(r, 300));
-      setLaunchSteps(s => [...s, "Criando ad..."]);
-      await new Promise(r => setTimeout(r, 300));
-      setLaunchSteps(s => [...s, "Ativando..."]);
-      await new Promise(r => setTimeout(r, 300));
-      setLaunchSteps(s => [...s, "Campanha no ar! O agente esta monitorando."]);
+      if (result.error) {
+        setLaunchError(result.error);
+        if (result.hint) setLaunchHint(result.hint);
+        return;
+      }
 
       setLaunchResult(result);
     } catch (err: any) {
@@ -321,30 +322,71 @@ export function LaunchTab() {
             <p>Verificar budget total antes de escalar</p>
           </div>
 
-          {!launchResult && !launchError && (
+          {!launchResult && (
             <button onClick={handleLaunch} disabled={launching || !creativeId}
               className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#e89b6a] px-6 py-3 text-base font-bold text-black hover:bg-[#d88a5a] disabled:opacity-50">
               {launching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Rocket className="h-5 w-5" />}
-              {launching ? "Lancando..." : "LANCAR CAMPANHA"}
+              {launching ? "Lancando..." : launchError ? "TENTAR DE NOVO" : "LANCAR CAMPANHA"}
             </button>
           )}
 
+          {/* Steps detalhados */}
           {launchSteps.length > 0 && (
-            <div className="space-y-1">
+            <div className="rounded-lg border border-[#1e1e1e] bg-[#0a0a0a] p-3 space-y-1">
+              <p className="text-xs font-medium text-[#999] mb-2">Progresso:</p>
               {launchSteps.map((s, i) => (
-                <p key={i} className="text-sm flex items-center gap-2">
-                  <CheckCircle className="h-3.5 w-3.5 text-green-400" />
-                  <span className="text-[#999]">{s}</span>
-                </p>
+                <div key={i} className="flex items-start gap-2 text-xs">
+                  {s.status === "ok" && <CheckCircle className="h-3.5 w-3.5 text-green-400 shrink-0 mt-0.5" />}
+                  {s.status === "error" && <AlertTriangle className="h-3.5 w-3.5 text-red-400 shrink-0 mt-0.5" />}
+                  {s.status === "pending" && <Loader2 className="h-3.5 w-3.5 text-yellow-400 animate-spin shrink-0 mt-0.5" />}
+                  {s.status === "skipped" && <span className="h-3.5 w-3.5 rounded-full bg-[#333] shrink-0 mt-0.5" />}
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-medium ${
+                      s.status === "ok" ? "text-green-400" :
+                      s.status === "error" ? "text-red-400" :
+                      s.status === "pending" ? "text-yellow-400" : "text-[#666]"
+                    }`}>{s.step}</p>
+                    {s.message && <p className="text-[#999] text-[10px] break-words">{s.message}</p>}
+                  </div>
+                </div>
               ))}
             </div>
           )}
 
+          {/* Erro com hint */}
           {launchError && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-4">
-              <p className="text-sm text-red-400 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" /> {launchError}
+            <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-4 space-y-2">
+              <p className="text-sm text-red-400 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{launchError}</span>
               </p>
+              {launchHint && (
+                <p className="text-xs text-yellow-400/80 pl-6">Dica: {launchHint}</p>
+              )}
+            </div>
+          )}
+
+          {/* Log detalhado (toggle) */}
+          {launchLog.length > 0 && (
+            <div>
+              <button onClick={() => setShowLog(!showLog)} className="text-xs text-[#666] hover:text-[#999]">
+                {showLog ? "Ocultar" : "Ver"} log detalhado ({launchLog.length} linhas)
+              </button>
+              {showLog && (
+                <pre className="mt-2 rounded-lg bg-black p-3 text-[10px] text-[#999] max-h-64 overflow-auto font-mono">
+                  {launchLog.join("\n")}
+                </pre>
+              )}
+            </div>
+          )}
+
+          {/* Sucesso */}
+          {launchResult && !launchError && (
+            <div className="rounded-lg bg-green-500/10 border border-green-500/30 p-4">
+              <p className="text-sm text-green-400 flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" /> Campanha no ar! O agente esta monitorando.
+              </p>
+              <p className="text-xs text-[#999] mt-1">ID: {launchResult.campaignId}</p>
             </div>
           )}
         </div>
