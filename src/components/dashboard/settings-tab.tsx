@@ -54,7 +54,14 @@ export default function SettingsTab() {
   // WhatsApp config
   const [whatsappProvider, setWhatsappProvider] = useState("z-api");
   const [whatsappInstanceId, setWhatsappInstanceId] = useState("");
+  // whatsappToken: campo EDITÁVEL. Começa sempre vazio. Se user não digitar nada,
+  // save envia undefined e backend preserva o valor atual. Se user digitar, envia o
+  // novo valor. Elimina ambiguidade do "••••••xxxx" mascarado sendo confundido
+  // com valor real pelo useState.
   const [whatsappToken, setWhatsappToken] = useState("");
+  // Preview do token salvo (só os últimos 4 chars mascarados). Read-only, só pra
+  // user confirmar que EXISTE um token configurado.
+  const [tokenPreview, setTokenPreview] = useState<string | null>(null);
   const [whatsappPhone, setWhatsappPhone] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [notifyAutoActions, setNotifyAutoActions] = useState(true);
@@ -63,6 +70,8 @@ export default function SettingsTab() {
   const [notifyAlerts, setNotifyAlerts] = useState(true);
   const [notifyDailySummary, setNotifyDailySummary] = useState(true);
   const [notifSaving, setNotifSaving] = useState(false);
+  const [notifSaveStatus, setNotifSaveStatus] = useState<"idle" | "success" | "error">("idle");
+  const [notifSaveError, setNotifSaveError] = useState<string | null>(null);
   const [notifTestResult, setNotifTestResult] = useState<string | null>(null);
   const [notifLogs, setNotifLogs] = useState<any[]>([]);
 
@@ -95,7 +104,9 @@ export default function SettingsTab() {
       if (data) {
         setWhatsappProvider(data.whatsappProvider || "z-api");
         setWhatsappInstanceId(data.whatsappInstanceId || "");
-        setWhatsappToken(data.whatsappToken || "");
+        // Token NUNCA entra no input editável. Só vai pro preview read-only.
+        setWhatsappToken("");
+        setTokenPreview(data.whatsappToken || null);
         setWhatsappPhone(data.whatsappPhone || "");
         setEnabled(data.enabled ?? true);
         setNotifyAutoActions(data.notifyAutoActions ?? true);
@@ -148,14 +159,27 @@ export default function SettingsTab() {
 
   const saveNotifConfig = async () => {
     setNotifSaving(true);
+    setNotifSaveStatus("idle");
+    setNotifSaveError(null);
     try {
-      await api.updateNotifConfig({
+      // Só envia o token se o user digitou algo. Campo vazio = preservar o
+      // valor atual no backend (undefined é ignorado pelo PUT).
+      const tokenToSend = whatsappToken.trim() !== "" ? whatsappToken : undefined;
+      const updated = await api.updateNotifConfig({
         whatsappProvider, whatsappInstanceId,
-        whatsappToken: whatsappToken.startsWith("••") ? undefined : whatsappToken,
+        whatsappToken: tokenToSend,
         whatsappPhone, enabled,
         notifyAutoActions, notifyCreativeActions, notifyLearningPhase, notifyAlerts, notifyDailySummary,
       });
-    } catch {}
+      // Atualiza preview com o token mascarado que voltou do backend, e limpa
+      // o input pra confirmar visualmente que o save funcionou.
+      setTokenPreview(updated?.whatsappToken || null);
+      setWhatsappToken("");
+      setNotifSaveStatus("success");
+    } catch (err: any) {
+      setNotifSaveStatus("error");
+      setNotifSaveError(err?.message || "erro desconhecido");
+    }
     setNotifSaving(false);
   };
 
@@ -319,6 +343,7 @@ export default function SettingsTab() {
               className="mt-1 w-full rounded-lg border border-[#333] bg-[#0a0a0a] px-3 py-2 text-sm text-white"
             >
               <option value="z-api">Z-API</option>
+              <option value="zappfy">Zappfy</option>
               <option value="evolution">Evolution API</option>
             </select>
           </div>
@@ -345,8 +370,14 @@ export default function SettingsTab() {
               value={whatsappToken}
               onChange={(e) => setWhatsappToken(e.target.value)}
               type="password"
-              className="mt-1 w-full rounded-lg border border-[#333] bg-[#0a0a0a] px-3 py-2 text-sm text-white"
+              placeholder={tokenPreview ? "Deixe vazio para manter o atual" : "Cole o token aqui"}
+              className="mt-1 w-full rounded-lg border border-[#333] bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-[#666]"
             />
+            {tokenPreview && (
+              <p className="mt-1 text-xs text-[#666]">
+                Token salvo: <span className="font-mono text-[#999]">{tokenPreview}</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -380,6 +411,14 @@ export default function SettingsTab() {
           )}
           {notifTestResult === "fail" && (
             <span className="flex items-center gap-1 text-sm text-red-400"><XCircle className="h-4 w-4" /> Falhou</span>
+          )}
+          {notifSaveStatus === "success" && (
+            <span className="flex items-center gap-1 text-sm text-green-400"><CheckCircle className="h-4 w-4" /> Config salva</span>
+          )}
+          {notifSaveStatus === "error" && (
+            <span className="flex items-center gap-1 text-sm text-red-400" title={notifSaveError ?? undefined}>
+              <XCircle className="h-4 w-4" /> Erro ao salvar{notifSaveError ? `: ${notifSaveError}` : ""}
+            </span>
           )}
         </div>
 
