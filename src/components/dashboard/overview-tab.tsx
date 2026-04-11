@@ -448,7 +448,9 @@ export function OverviewTab() {
   const salesData = buildSalesByCampaign(safeCampaigns);
 
   const ov = overviewCompare?.current ?? overviewCompare ?? {};
-  const variations = overviewCompare?.variations ?? {};
+  // Backend /metrics/overview?compare=previous retorna {current, previous, variation}
+  // (singular). O nome "variations" no frontend era bug — nunca resolvia.
+  const variations = overviewCompare?.variation ?? {};
 
   // ---- Render ----
 
@@ -524,15 +526,16 @@ export function OverviewTab() {
         >
           <CardHeader className="flex flex-row items-center gap-3 pb-2">
             <CardTitle className="text-white">Briefing do Dia</CardTitle>
-            {briefing.status === "atencao" && (
+            {/* Backend /briefing/daily retorna overall_status (não status) */}
+            {briefing.overall_status === "atencao" && (
               <Badge className="bg-red-900 text-red-300 hover:bg-red-900">Atencao</Badge>
             )}
-            {briefing.status === "oportunidade" && (
+            {briefing.overall_status === "oportunidade" && (
               <Badge className="bg-green-900 text-green-300 hover:bg-green-900">Oportunidade</Badge>
             )}
-            {briefing.status === "estavel" && (
+            {briefing.overall_status === "stable" || briefing.overall_status === "estavel" ? (
               <Badge className="bg-blue-900 text-blue-300 hover:bg-blue-900">Estavel</Badge>
-            )}
+            ) : null}
             {briefing.actions_count != null && briefing.actions_count > 0 && (
               <Badge className="bg-[#e89b6a]/20 text-[#e89b6a] hover:bg-[#e89b6a]/20">
                 {briefing.actions_count} acoes
@@ -540,11 +543,12 @@ export function OverviewTab() {
             )}
           </CardHeader>
           <CardContent>
+            {/* Backend retorna o texto no campo `briefing`, não `text` nem `summary` */}
             <p
               className="text-sm leading-relaxed text-[#ccc]"
               style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", whiteSpace: "pre-wrap" }}
             >
-              {briefing.text ?? briefing.summary ?? "Sem briefing disponivel."}
+              {briefing.briefing ?? briefing.text ?? briefing.summary ?? "Sem briefing disponivel."}
             </p>
 
             <button
@@ -596,16 +600,12 @@ export function OverviewTab() {
                 color={scoreColor(score.score ?? score.total ?? 0)}
               />
               <div className="flex-1 space-y-2">
-                {score.breakdown && (
-                  <>
-                    <MiniBar label="CPA" value={score.breakdown.cpa ?? 0} />
-                    <MiniBar label="ROAS" value={score.breakdown.roas ?? 0} />
-                    <MiniBar label="CTR" value={score.breakdown.ctr ?? 0} />
-                    <MiniBar label="Freq" value={score.breakdown.frequency ?? 0} />
-                    <MiniBar label="Hook" value={score.breakdown.hook_rate ?? score.breakdown.hookRate ?? 0} />
-                    <MiniBar label="Criativos" value={score.breakdown.creatives ?? 0} />
-                  </>
-                )}
+                {/* Backend /metrics/score retorna breakdown como array
+                    [{metric, value, score, weight}], não como objeto. */}
+                {Array.isArray(score.breakdown) &&
+                  score.breakdown.map((item: { metric: string; score: number }) => (
+                    <MiniBar key={item.metric} label={item.metric} value={item.score ?? 0} />
+                  ))}
               </div>
             </div>
           </CardContent>
@@ -731,29 +731,30 @@ export function OverviewTab() {
             </Badge>
           </CardHeader>
           <CardContent>
+            {/* Backend /sales/discrepancy usa meta_reported_X / real_X / kirvano_real_sales */}
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div>
                 <p className="text-xs text-[#999]">CPA Meta</p>
                 <p className="text-lg font-bold text-white">
-                  {formatBRL(discrepancy.cpa_meta ?? 0)}
+                  {formatBRL(discrepancy.meta_reported_cpa ?? 0)}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-[#999]">CPA Real (Kirvano)</p>
                 <p className="text-lg font-bold text-white">
-                  {formatBRL(discrepancy.cpa_real ?? 0)}
+                  {formatBRL(discrepancy.real_cpa ?? 0)}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-[#999]">Vendas Meta</p>
                 <p className="text-lg font-bold text-white">
-                  {formatNumber(discrepancy.sales_meta ?? 0)}
+                  {formatNumber(discrepancy.meta_reported_sales ?? 0)}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-[#999]">Vendas Real</p>
                 <p className="text-lg font-bold text-white">
-                  {formatNumber(discrepancy.sales_real ?? 0)}
+                  {formatNumber(discrepancy.kirvano_real_sales ?? 0)}
                 </p>
               </div>
             </div>

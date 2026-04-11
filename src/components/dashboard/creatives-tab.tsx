@@ -151,10 +151,12 @@ function PipelineSummary() {
     );
   }
 
-  const healthy = lifecycle?.healthy ?? 0;
-  const declining = lifecycle?.declining ?? 0;
-  const exhausted = lifecycle?.exhausted ?? 0;
-  const reserve = lifecycle?.reserve ?? 0;
+  // Backend /creatives/lifecycle retorna { summary: { total_active, healthy, declining, exhausted, in_reserve, status, message }, creatives, production_queue }
+  const summary = lifecycle?.summary ?? {};
+  const healthy = summary.healthy ?? 0;
+  const declining = summary.declining ?? 0;
+  const exhausted = summary.exhausted ?? 0;
+  const reserve = summary.in_reserve ?? 0;
 
   const pipelineCards = [
     { label: "Saudaveis", count: healthy, color: "#50c878", icon: Heart },
@@ -245,10 +247,17 @@ function LifecycleCards() {
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {/* Backend /creatives/lifecycle retorna campos snake_case:
+          days_active, initial_ctr, current_ctr, current_cpa, current_hook_rate,
+          estimated_days_remaining, lifecycle_stage */}
       {creatives.map((c: any) => {
-        const days = c.daysActive ?? 0;
-        const ctrPrev = c.ctrPrevious ?? null;
-        const ctrCurr = c.ctr ?? null;
+        const days = c.days_active ?? c.daysActive ?? 0;
+        const ctrPrev = c.initial_ctr ?? c.ctrPrevious ?? null;
+        const ctrCurr = c.current_ctr ?? c.ctr ?? null;
+        const cpa = c.current_cpa ?? c.cpa ?? null;
+        const hookRate = c.current_hook_rate ?? c.hookRate ?? null;
+        const daysRemaining = c.estimated_days_remaining ?? c.daysRemaining ?? null;
+        const stage = c.lifecycle_stage ?? c.stage ?? "healthy";
         const ctrChange =
           ctrPrev && ctrCurr && ctrPrev > 0
             ? ((ctrCurr - ctrPrev) / ctrPrev) * 100
@@ -265,7 +274,7 @@ function LifecycleCards() {
                     {c.type}
                   </Badge>
                 </div>
-                {stageBadge(c.stage ?? "healthy")}
+                {stageBadge(stage)}
               </div>
 
               {/* Days active */}
@@ -284,11 +293,11 @@ function LifecycleCards() {
               </div>
 
               {/* CPA */}
-              {c.cpa != null && (
+              {cpa != null && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-[#999]">CPA:</span>
-                  <span className="text-sm font-semibold" style={{ color: cpaColor(c.cpa) }}>
-                    {formatBRL(c.cpa)}
+                  <span className="text-sm font-semibold" style={{ color: cpaColor(cpa) }}>
+                    {formatBRL(cpa)}
                   </span>
                 </div>
               )}
@@ -309,22 +318,22 @@ function LifecycleCards() {
               )}
 
               {/* Hook Rate */}
-              {c.hookRate != null && (
+              {hookRate != null && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-[#999]">Hook Rate:</span>
-                  <span className="text-sm text-[#ccc]">{formatPercent(c.hookRate)}</span>
+                  <span className="text-sm text-[#ccc]">{formatPercent(hookRate)}</span>
                 </div>
               )}
 
               {/* Days remaining */}
-              {c.daysRemaining != null && (
+              {daysRemaining != null && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-[#999]">Dias restantes estimados:</span>
                   <span
                     className="text-sm font-medium"
-                    style={{ color: c.daysRemaining < 5 ? "#e85040" : "#ccc" }}
+                    style={{ color: daysRemaining < 5 ? "#e85040" : "#ccc" }}
                   >
-                    ~{c.daysRemaining} dias
+                    ~{daysRemaining} dias
                   </span>
                 </div>
               )}
@@ -544,20 +553,33 @@ function ABTestsSection() {
     refetchInterval: 60000,
   });
 
+  const [mutationError, setMutationError] = useState<string | null>(null);
+
   const createMutation = useMutation({
     mutationFn: (data: any) => api.createTest(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["activeTests"] });
       setDialogOpen(false);
       setNewTest({ name: "", variantA: "", variantB: "" });
+      setMutationError(null);
+    },
+    onError: (err: any) => {
+      // Formulário atual não coleta adsetId nem ids dos ads — o backend exige.
+      // Enquanto não refatorar o form, ao menos mostra o erro em vez de engolir.
+      setMutationError(err?.message || "Erro ao criar teste");
     },
   });
 
   const decideMutation = useMutation({
     mutationFn: ({ id, winner }: { id: string; winner: string }) =>
-      api.decideTest(id, winner),
+      // Backend espera "variantA" | "variantB", não "A" | "B"
+      api.decideTest(id, winner === "A" ? "variantA" : winner === "B" ? "variantB" : winner),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["activeTests"] });
+      setMutationError(null);
+    },
+    onError: (err: any) => {
+      setMutationError(err?.message || "Erro ao aplicar decisão");
     },
   });
 
@@ -569,9 +591,15 @@ function ABTestsSection() {
 
   return (
     <div className="space-y-4">
+      {mutationError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+          <XCircle className="h-4 w-4 shrink-0" />
+          <span>{mutationError}</span>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h3 className="text-base font-semibold text-white">Testes A/B Ativos</h3>
-        <Dialog open={dialogOpen} onOpenChange={(v) => v && setDialogOpen(v)}>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger>
             <Button
               variant="outline"
@@ -636,8 +664,9 @@ function ABTestsSection() {
         </Card>
       ) : (
         testList.map((test: any) => {
-          const a = test.variantA ?? {};
-          const b = test.variantB ?? {};
+          // Backend /tests/active usa variant_a / variant_b / days_running / min_days (snake_case)
+          const a = test.variant_a ?? test.variantA ?? {};
+          const b = test.variant_b ?? test.variantB ?? {};
           const confidence = test.confidence ?? 0;
           const status =
             confidence >= 90 ? "ready" : confidence >= 60 ? "trending" : "waiting";
@@ -735,11 +764,11 @@ function ABTestsSection() {
                   <p className="text-right text-[10px] text-[#666]">meta: 90%</p>
                 </div>
 
-                {/* Timer */}
+                {/* Timer — backend retorna days_running / min_days */}
                 <div className="flex items-center gap-2 text-xs text-[#999]">
                   <Clock className="h-3.5 w-3.5" />
                   <span>
-                    Rodando ha {test.daysRunning ?? 0} dias (minimo: {test.minDays ?? 7})
+                    Rodando ha {test.days_running ?? test.daysRunning ?? 0} dias (minimo: {test.min_days ?? test.minDays ?? 7})
                   </span>
                 </div>
 

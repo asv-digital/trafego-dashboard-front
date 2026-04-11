@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertOctagon,
@@ -176,11 +177,11 @@ function OperationScore() {
 
 function AlertCard({
   alert,
-  onPauseAdset,
+  onPause,
   isPausing,
 }: {
   alert: Alert;
-  onPauseAdset: (campaignId: string) => void;
+  onPause: (metaCampaignId: string) => void;
   isPausing: boolean;
 }) {
   const config = levelConfig[alert.level];
@@ -228,17 +229,22 @@ function AlertCard({
           <p className="text-sm text-[#999]">{alert.message}</p>
           <div className="flex items-center gap-3">
             <p className="text-sm italic text-[#666]">{alert.action}</p>
-            {showPauseAction && (
+            {showPauseAction && alert.metaCampaignId && (
               <Button
                 variant="outline"
                 size="sm"
                 className="border-[#e85040]/40 text-[#e85040] hover:bg-[#e85040]/10 hover:text-[#e85040] text-xs"
-                onClick={() => onPauseAdset(alert.campaignId)}
+                onClick={() => onPause(alert.metaCampaignId!)}
                 disabled={isPausing}
               >
                 <Pause className="mr-1 h-3 w-3" />
-                Pausar este conjunto
+                Pausar campanha
               </Button>
+            )}
+            {showPauseAction && !alert.metaCampaignId && (
+              <span className="text-xs text-[#666]">
+                (campanha não lançada no Meta — ação manual necessária)
+              </span>
             )}
           </div>
         </div>
@@ -253,6 +259,7 @@ function AlertCard({
 
 function AlertsSection() {
   const queryClient = useQueryClient();
+  const [pauseError, setPauseError] = useState<string | null>(null);
 
   const { data: alerts = [], isLoading } = useQuery<Alert[]>({
     queryKey: ["alerts"],
@@ -260,13 +267,22 @@ function AlertsSection() {
     refetchInterval: 120000,
   });
 
+  // Pausa a CAMPANHA inteira via Meta Graph. O alerta é em nível de campanha
+  // (não de ad set individual), então usa updateCampaignStatus com metaCampaignId.
+  // Antes: usava updateAdsetStatus com campaign.id (DB id) → Meta devolvia 400,
+  // botão parecia funcionar mas nada acontecia. Agora: se não há metaCampaignId
+  // (campanha só no DB, nunca lançada), o botão fica desabilitado.
   const pauseMutation = useMutation({
-    mutationFn: (campaignId: string) =>
-      api.updateAdsetStatus(campaignId, "PAUSED"),
+    mutationFn: (metaCampaignId: string) =>
+      api.updateCampaignStatus(metaCampaignId, "PAUSED"),
     onSuccess: () => {
+      setPauseError(null);
       queryClient.invalidateQueries({ queryKey: ["alerts"] });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["metaLiveCampaigns"] });
+    },
+    onError: (err: any) => {
+      setPauseError(err?.message || "Erro ao pausar campanha");
     },
   });
 
@@ -301,11 +317,17 @@ function AlertsSection() {
 
   return (
     <div className="space-y-3">
+      {pauseError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+          <XCircle className="h-4 w-4 shrink-0" />
+          <span>{pauseError}</span>
+        </div>
+      )}
       {alerts.map((alert, idx) => (
         <AlertCard
           key={`${alert.campaignId}-${idx}`}
           alert={alert}
-          onPauseAdset={(id) => pauseMutation.mutate(id)}
+          onPause={(metaId) => pauseMutation.mutate(metaId)}
           isPausing={pauseMutation.isPending}
         />
       ))}
@@ -330,10 +352,10 @@ function DiscrepancyCard() {
 
   if (!disc) return null;
 
-  const metaSales = disc.metaSales ?? 0;
-  const kirvanoSales = disc.kirvanoSales ?? 0;
-  const diff = kirvanoSales > 0 ? ((kirvanoSales - metaSales) / kirvanoSales) * 100 : 0;
-  const diffAbs = Math.abs(diff);
+  // Backend /sales/discrepancy retorna meta_reported_sales / kirvano_real_sales / discrepancy_percent
+  const metaSales = disc.meta_reported_sales ?? 0;
+  const kirvanoSales = disc.kirvano_real_sales ?? 0;
+  const diffAbs = Math.abs(disc.discrepancy_percent ?? 0);
 
   return (
     <Card className="border-[#1e1e1e] bg-[#111111]">
@@ -346,16 +368,14 @@ function DiscrepancyCard() {
       <CardContent className="space-y-3">
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-lg border border-[#1e1e1e] bg-[#0a0a0a] p-3">
-            <p className="text-xs text-[#999]">Meta Ads</p>
-            <p className="text-lg font-bold text-white">
-              {disc.metaRevenue != null ? formatBRL(disc.metaRevenue) : `${metaSales} vendas`}
-            </p>
+            <p className="text-xs text-[#999]">Meta Ads (reportado)</p>
+            <p className="text-lg font-bold text-white">{metaSales} vendas</p>
+            <p className="text-xs text-[#666]">CPA {formatBRL(disc.meta_reported_cpa ?? 0)}</p>
           </div>
           <div className="rounded-lg border border-[#1e1e1e] bg-[#0a0a0a] p-3">
-            <p className="text-xs text-[#999]">Kirvano</p>
-            <p className="text-lg font-bold text-white">
-              {disc.kirvanoRevenue != null ? formatBRL(disc.kirvanoRevenue) : `${kirvanoSales} vendas`}
-            </p>
+            <p className="text-xs text-[#999]">Kirvano (real)</p>
+            <p className="text-lg font-bold text-white">{kirvanoSales} vendas</p>
+            <p className="text-xs text-[#666]">CPA {formatBRL(disc.real_cpa ?? 0)}</p>
           </div>
         </div>
         {diffAbs > 0 && (
@@ -369,6 +389,9 @@ function DiscrepancyCard() {
           >
             Meta subreporta {diffAbs.toFixed(1)}%
           </Badge>
+        )}
+        {disc.recommendation && (
+          <p className="text-xs text-[#999]">{disc.recommendation}</p>
         )}
       </CardContent>
     </Card>
@@ -398,11 +421,11 @@ function SalesSummarySection() {
 
   if (!summary) return null;
 
-  const approved = summary.approved ?? 0;
-  const refunded = summary.refunded ?? 0;
-  const chargebacks = summary.chargebacks ?? 0;
-  const total = approved + refunded + chargebacks;
-  const refundRate = total > 0 ? (refunded / total) * 100 : 0;
+  // Backend /sales/summary retorna { total, byStatus: { approved: {count, revenue}, refunded: {count}, chargeback: {count}, ... }, refundRate, chargebackRate }
+  const approved = summary.byStatus?.approved?.count ?? 0;
+  const refunded = summary.byStatus?.refunded?.count ?? 0;
+  const chargebacks = summary.byStatus?.chargeback?.count ?? 0;
+  const refundRate = (summary.refundRate ?? 0) * 100;
 
   const cards = [
     {
@@ -488,8 +511,16 @@ function SalesHeatmap() {
 
   if (!heatmap) return null;
 
-  const grid: number[][] = heatmap.grid ?? [];
-  const insights: string[] = heatmap.insights ?? [];
+  // Backend /sales/heatmap retorna { heatmap: [{dayOfWeek, hour, sales}], insights }
+  // Converte a lista flat pra grid 7x24 que o render espera.
+  const flat: Array<{ dayOfWeek: number; hour: number; sales: number }> = heatmap.heatmap ?? [];
+  const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
+  for (const entry of flat) {
+    if (entry.dayOfWeek >= 0 && entry.dayOfWeek < 7 && entry.hour >= 0 && entry.hour < 24) {
+      grid[entry.dayOfWeek][entry.hour] = entry.sales;
+    }
+  }
+  const insights: string[] = Array.isArray(heatmap.insights) ? heatmap.insights : [];
 
   // Find max value for color scaling
   let max = 0;
@@ -577,12 +608,13 @@ function LtvCard() {
 
   if (!ltv) return null;
 
-  const skillsBuyers = ltv.skillsBuyers ?? 0;
-  const mentoriaConversions = ltv.mentoriaConversions ?? 0;
-  const conversionRate =
-    skillsBuyers > 0 ? (mentoriaConversions / skillsBuyers) * 100 : 0;
-  const estimatedLtv = ltv.estimatedLtv ?? 0;
-  const realRoas = ltv.realRoas ?? 0;
+  // Backend /sales/ltv retorna snake_case: total_skills_buyers, converted_to_mentoria,
+  // conversion_rate, estimated_ltv_per_buyer, skills_roas
+  const skillsBuyers = ltv.total_skills_buyers ?? 0;
+  const mentoriaConversions = ltv.converted_to_mentoria ?? 0;
+  const conversionRate = (ltv.conversion_rate ?? 0) * 100;
+  const estimatedLtv = ltv.estimated_ltv_per_buyer ?? 0;
+  const realRoas = ltv.skills_roas ?? 0;
 
   return (
     <Card className="border-[#1e1e1e] bg-[#111111]">

@@ -294,6 +294,7 @@ export interface Alert {
   level: "critical" | "red" | "yellow" | "green";
   campaign: string;
   campaignId: string;
+  metaCampaignId: string | null;
   adSet?: string;
   message: string;
   action: string;

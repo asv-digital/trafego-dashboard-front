@@ -116,54 +116,73 @@ function ScalingBanner() {
     refetchInterval: 60000,
   });
 
+  const [executeError, setExecuteError] = useState<string | null>(null);
+
+  // Backend /scaling-rules retorna snake_case e valores de action:
+  // "kill" / "consider_pause" / "watch" / "scale_up". Frontend antes olhava
+  // pra "pause"/"scale" (nunca casava) e usava campaignId/adsetId (não existem).
+  // Pause usa meta_campaign_id pra chamar updateCampaignStatus.
+  // Scale_up está temporariamente bloqueado porque requer Meta ad set id,
+  // que essa rota não expõe — botão dispara erro claro ao invés de silenciosa falha.
   const executeMutation = useMutation({
     mutationFn: (rule: any) => {
-      if (rule.action === "pause" || rule.action === "kill") {
-        return api.updateCampaignStatus(rule.campaignId || rule.adsetId, "PAUSED");
+      if (rule.action === "kill" || rule.action === "consider_pause") {
+        if (!rule.meta_campaign_id) {
+          return Promise.reject(new Error("Campanha não lançada no Meta — pausar manualmente"));
+        }
+        return api.updateCampaignStatus(rule.meta_campaign_id, "PAUSED");
       }
-      if (rule.action === "scale") {
-        const newBudget = Math.round((rule.currentBudget || 100) * 1.2 * 100) / 100;
-        return api.updateAdsetBudget(rule.adsetId || rule.campaignId, newBudget);
+      if (rule.action === "scale_up") {
+        return Promise.reject(
+          new Error("Escalar via dashboard ainda não suportado nessa rota — use o Rebalance de Budget ou escale via Meta."),
+        );
       }
       return Promise.resolve(null);
     },
     onSuccess: () => {
+      setExecuteError(null);
       queryClient.invalidateQueries({ queryKey: ["scalingRules"] });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["metaLiveCampaigns"] });
+    },
+    onError: (err: any) => {
+      setExecuteError(err?.message || "Erro ao executar ação");
     },
   });
 
   if (isLoading || !Array.isArray(rules) || rules.length === 0) return null;
 
-  const scaleRules = rules.filter((r: any) => r.action === "scale");
+  // Valores reais de action vindos do backend: scale_up / watch / consider_pause / kill
+  const scaleRules = rules.filter((r: any) => r.action === "scale_up" || r.action === "scale");
   const watchRules = rules.filter((r: any) => r.action === "watch" || r.action === "observe");
   const killRules = rules.filter(
-    (r: any) => r.action === "pause" || r.action === "kill"
+    (r: any) => r.action === "pause" || r.action === "kill" || r.action === "consider_pause"
   );
 
   function renderRuleCard(rule: any, color: string, borderColor: string, bgColor: string) {
-    const icon =
-      rule.action === "scale" ? (
-        <ArrowUpCircle className="h-4 w-4" />
-      ) : rule.action === "watch" || rule.action === "observe" ? (
-        <Eye className="h-4 w-4" />
-      ) : (
-        <XCircle className="h-4 w-4" />
-      );
+    const isScale = rule.action === "scale_up" || rule.action === "scale";
+    const isWatch = rule.action === "watch" || rule.action === "observe";
+    const isKill = rule.action === "kill" || rule.action === "consider_pause" || rule.action === "pause";
 
-    const label =
-      rule.action === "scale"
-        ? "Escalar"
-        : rule.action === "watch" || rule.action === "observe"
-        ? "Observar"
-        : rule.action === "kill"
-        ? "Kill"
-        : "Pausar";
+    const icon = isScale ? (
+      <ArrowUpCircle className="h-4 w-4" />
+    ) : isWatch ? (
+      <Eye className="h-4 w-4" />
+    ) : (
+      <XCircle className="h-4 w-4" />
+    );
+
+    const label = isScale
+      ? "Escalar"
+      : isWatch
+      ? "Observar"
+      : rule.action === "kill"
+      ? "Kill"
+      : "Pausar";
 
     return (
       <Card
-        key={rule.campaignId || rule.adsetId || rule.name}
+        key={rule.meta_campaign_id || rule.campaign_id || rule.campaign_name}
         className="border bg-[#111111]"
         style={{ borderColor }}
       >
@@ -175,10 +194,10 @@ function ScalingBanner() {
             </Badge>
           </div>
           <p className="text-sm font-medium text-white">
-            {rule.campaignName || rule.name || "—"}
+            {rule.campaign_name || rule.campaignName || rule.name || "—"}
           </p>
-          <p className="text-xs text-[#999]">{rule.reason || rule.message || ""}</p>
-          {(rule.action === "scale" || rule.action === "pause" || rule.action === "kill") && (
+          <p className="text-xs text-[#999]">{rule.message || rule.reason || ""}</p>
+          {(isScale || isKill) && (
             <Button
               size="sm"
               variant="outline"
@@ -203,6 +222,12 @@ function ScalingBanner() {
       <h3 className="text-sm font-semibold text-[#999] uppercase tracking-wide">
         Recomendacoes de Scaling
       </h3>
+      {executeError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+          <XCircle className="h-4 w-4 shrink-0" />
+          <span>{executeError}</span>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {scaleRules.map((r: any) =>
           renderRuleCard(r, "#50c878", "#50c878/40", "#50c878/10")
@@ -517,7 +542,12 @@ function BudgetRebalanceSection() {
 
   if (isLoading) return null;
 
-  const suggestions = Array.isArray(data?.suggestions) ? data.suggestions : Array.isArray(data) ? data : [];
+  // Backend /metrics/budget-rebalance retorna { recommendations, summary, totalDailyBudget, suggestedTotalBudget, rebalance_diff }
+  const suggestions = Array.isArray(data?.recommendations)
+    ? data.recommendations
+    : Array.isArray(data?.suggestions)
+      ? data.suggestions
+      : [];
   if (suggestions.length === 0) return null;
 
   return (
@@ -539,14 +569,15 @@ function BudgetRebalanceSection() {
             </TableHeader>
             <TableBody>
               {suggestions.map((s: any, idx: number) => {
-                const current = Number(s.currentBudget ?? s.current_budget ?? 0);
-                const suggested = Number(s.suggestedBudget ?? s.suggested_budget ?? 0);
+                // Backend usa current_daily_budget / suggested_daily_budget
+                const current = Number(s.current_daily_budget ?? s.currentBudget ?? 0);
+                const suggested = Number(s.suggested_daily_budget ?? s.suggestedBudget ?? 0);
                 const variation = current > 0 ? ((suggested - current) / current) * 100 : 0;
                 const isIncrease = variation > 0;
 
                 return (
                   <TableRow
-                    key={s.adsetId || idx}
+                    key={s.campaignId || s.adsetId || idx}
                     className="border-[#1e1e1e] hover:bg-[#1a1a1a]"
                     style={{
                       backgroundColor: isIncrease
@@ -557,7 +588,7 @@ function BudgetRebalanceSection() {
                     }}
                   >
                     <TableCell className="font-medium text-white">
-                      {s.adsetName || s.name || s.adsetId || "—"}
+                      {s.campaignName || s.adsetName || s.name || "—"}
                     </TableCell>
                     <TableCell className="text-right text-[#ccc]">
                       {formatBRL(current)}
@@ -710,9 +741,10 @@ function FrequencyByAdsetSection() {
               {adsets.map((a: any, idx: number) => {
                 const freq = Number(a.frequency ?? 0);
                 return (
-                  <TableRow key={a.adsetId || idx} className="border-[#1e1e1e] hover:bg-[#1a1a1a]">
+                  <TableRow key={a.adset_id || a.adsetId || idx} className="border-[#1e1e1e] hover:bg-[#1a1a1a]">
+                    {/* Backend /metrics/frequency-by-adset usa snake_case: adset_name */}
                     <TableCell className="font-medium text-white">
-                      {a.adsetName || a.name || "—"}
+                      {a.adset_name || a.adsetName || a.name || "—"}
                     </TableCell>
                     <TableCell
                       className="text-right font-semibold"
@@ -758,7 +790,14 @@ function ActionLogTimeline() {
 
   if (isLoading) return null;
 
-  const logs = Array.isArray(data?.logs) ? data.logs : Array.isArray(data) ? data : [];
+  // Backend /actions/log retorna { data: logs[], limit }
+  const logs = Array.isArray(data?.data)
+    ? data.data
+    : Array.isArray(data?.logs)
+      ? data.logs
+      : Array.isArray(data)
+        ? data
+        : [];
   if (logs.length === 0) return null;
 
   return (
