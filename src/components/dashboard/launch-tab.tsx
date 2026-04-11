@@ -35,8 +35,12 @@ export function LaunchTab() {
   const [lalAudienceId, setLalAudienceId] = useState("");
   const [existingCampaignId, setExistingCampaignId] = useState("");
   const [useExisting, setUseExisting] = useState(false);
+  // Variante B do teste A/B — só usado se campaignType === "TESTE_AB".
+  // O criativo principal (Step 1) é a variante A; aqui upa a B.
   const [abFile, setAbFile] = useState<File | null>(null);
   const [abCreativeId, setAbCreativeId] = useState<string | null>(null);
+  const [abUploading, setAbUploading] = useState(false);
+  const abFileRef = useRef<HTMLInputElement>(null);
 
   // Step 3 state
   const [campaignName, setCampaignName] = useState("");
@@ -82,6 +86,26 @@ export function LaunchTab() {
       alert("Erro no upload: " + (err.message || err));
     }
     setUploading(false);
+  };
+
+  // Upload da Variante B (teste A/B). Reusa o mesmo primaryText/headline/CTA
+  // do Step 1 — o que muda entre as variantes é APENAS o arquivo de mídia.
+  const handleAbUpload = async () => {
+    if (!abFile) return;
+    setAbUploading(true);
+    try {
+      const result = await api.uploadMedia(abFile);
+      if (result.error) throw new Error(result.error);
+      const preview = await api.previewCreative({
+        mediaType: result.type, metaId: result.metaId,
+        primaryText, headline, description, ctaType, linkUrl,
+      });
+      if (preview.error) throw new Error(preview.error);
+      setAbCreativeId(preview.creativeId);
+    } catch (err: any) {
+      alert("Erro no upload da variante B: " + (err.message || err));
+    }
+    setAbUploading(false);
   };
 
   const handleLaunch = async () => {
@@ -238,6 +262,39 @@ export function LaunchTab() {
             </div>
           )}
 
+          {campaignType === "TESTE_AB" && (
+            <div className="rounded-lg border border-[#1e1e1e] bg-[#0a0a0a] p-4 space-y-3">
+              <p className="text-sm font-medium text-white">Variante B (criativo diferente)</p>
+              <p className="text-xs text-[#666]">
+                A variante A é o criativo que você subiu no Step 1. Aqui você upa a variante B —
+                mesmo texto/CTA/link, mas arquivo diferente. O teste A/B usa dois ad sets idênticos
+                com criativos diferentes.
+              </p>
+              <input
+                ref={abFileRef}
+                type="file"
+                accept="video/mp4,video/quicktime,image/jpeg,image/png"
+                onChange={(e) => { setAbFile(e.target.files?.[0] || null); setAbCreativeId(null); }}
+                className="text-xs text-[#999] file:mr-3 file:rounded file:border-0 file:bg-[#1e1e1e] file:px-3 file:py-1.5 file:text-[#e89b6a] hover:file:bg-[#2a2a2a]"
+              />
+              {abFile && !abCreativeId && (
+                <button
+                  onClick={handleAbUpload}
+                  disabled={abUploading}
+                  className="flex items-center gap-2 rounded-lg bg-[#e89b6a] px-4 py-2 text-xs font-medium text-black hover:bg-[#d88a5a] disabled:opacity-50"
+                >
+                  {abUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {abUploading ? "Enviando..." : "Upload Variante B"}
+                </button>
+              )}
+              {abCreativeId && (
+                <p className="text-xs text-green-400 flex items-center gap-1">
+                  <CheckCircle className="h-4 w-4" /> Variante B pronta
+                </p>
+              )}
+            </div>
+          )}
+
           <label className="flex items-center gap-2 text-sm text-[#999] cursor-pointer">
             <input type="checkbox" checked={useExisting} onChange={(e) => setUseExisting(e.target.checked)} />
             Adicionar a campanha existente
@@ -315,11 +372,13 @@ export function LaunchTab() {
           <div className="rounded-lg bg-[#0a0a0a] p-4 text-xs text-[#666] space-y-1">
             <p className="text-[#999] font-medium mb-2">O agente vai:</p>
             <p>Monitorar a cada 4h</p>
-            <p>Pausar se gastar {`>`} R$200 sem vendas</p>
-            <p>Pausar se CPA {`>`} R$93,60 por 3 dias</p>
-            <p>Escalar se CPA {`<`} R$50 por 3 dias</p>
-            <p>Respeitar learning phase (72h)</p>
-            <p>Verificar budget total antes de escalar</p>
+            <p>Pausar imediatamente se gastar {`>`} R$200 sem vendas</p>
+            <p>Pausar se CPA {`>`} R$70 por 3 dias (25% abaixo do breakeven R$93,60)</p>
+            <p>Escalar +20% se CPA {`<`} R$50 por 3 dias (sem resetar learning phase)</p>
+            <p>Respeitar learning phase (72h) — não toca em ad set novo</p>
+            <p>Validar budget total antes de escalar (cap R$500/dia)</p>
+            <p>Rebalance intra-campanha (move budget de losers pra winners)</p>
+            <p>Alerta WhatsApp em qualquer ação destrutiva</p>
           </div>
 
           {!launchResult && (
