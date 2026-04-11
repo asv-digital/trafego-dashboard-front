@@ -370,6 +370,8 @@ export default function SettingsTab() {
               value={whatsappToken}
               onChange={(e) => setWhatsappToken(e.target.value)}
               type="password"
+              autoComplete="new-password"
+              name="whatsapp-token-field"
               placeholder={tokenPreview ? "Deixe vazio para manter o atual" : "Cole o token aqui"}
               className="mt-1 w-full rounded-lg border border-[#333] bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-[#666]"
             />
