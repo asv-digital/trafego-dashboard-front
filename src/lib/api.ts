@@ -158,6 +158,16 @@ export const api = {
   updateNotifConfig: (data: any) => putter<any>("/notifications/config", data),
   getNotifLog: () => fetcher<any[]>("/notifications/log"),
   testNotification: () => poster<any>("/notifications/test", {}),
+  getNotificationHealth: () =>
+    fetcher<{
+      status: "healthy" | "warning" | "critical";
+      reason: string;
+      last_success_at: string | null;
+      hours_since_last_success: number | null;
+      sent_last_24h: number;
+      failed_last_24h: number;
+      consecutive_failures: number;
+    }>("/notifications/health"),
 
   // Automation Config
   getAutomationConfig: () => fetcher<any>("/automations/config"),

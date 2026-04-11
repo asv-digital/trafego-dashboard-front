@@ -21,6 +21,7 @@ import MethodTab from "@/components/dashboard/method-tab";
 import SettingsTab from "@/components/dashboard/settings-tab";
 import { LaunchTab } from "@/components/dashboard/launch-tab";
 import { ReportButton } from "@/components/dashboard/ceo-report";
+import { NotificationHealthBanner } from "@/components/dashboard/notification-health-banner";
 import { api } from "@/lib/api";
 
 const tabs = [
@@ -57,6 +58,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
+      <NotificationHealthBanner />
       {/* Header */}
       <header className="border-b border-[#1e1e1e] bg-[#0f0f0f]">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
