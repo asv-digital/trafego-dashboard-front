@@ -77,6 +77,7 @@ export const api = {
   createMetaCampaign: (data: any) => poster<any>("/meta-actions/campaigns/create", data),
   createMetaAdset: (data: any) => poster<any>("/meta-actions/adsets/create", data),
   updateCampaignStatus: (id: string, status: string) => patcher<any>(`/meta-actions/campaigns/${id}/status`, { status }),
+  updateCampaignBudget: (id: string, daily_budget: number) => patcher<any>(`/meta-actions/campaigns/${id}/budget`, { daily_budget }),
   updateAdsetStatus: (id: string, status: string) => patcher<any>(`/meta-actions/adsets/${id}/status`, { status }),
   updateAdsetBudget: (id: string, daily_budget: number) => patcher<any>(`/meta-actions/adsets/${id}/budget`, { daily_budget }),
 

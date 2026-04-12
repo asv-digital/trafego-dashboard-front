@@ -259,7 +259,7 @@ function CampaignCard({
   liveCampaign?: any;
   onPause: (id: string) => void;
   onActivate: (id: string) => void;
-  onScale: (campaign: Campaign) => void;
+  onScale: (campaign: Campaign, liveCampaign?: any) => void;
   isPending: boolean;
 }) {
   const liveStatus =
@@ -342,7 +342,7 @@ function CampaignCard({
                 variant="outline"
                 size="sm"
                 className="border-[#5b9bd5]/40 text-[#5b9bd5] hover:bg-[#5b9bd5]/10 hover:text-[#5b9bd5]"
-                onClick={() => onScale(campaign)}
+                onClick={() => onScale(campaign, liveCampaign)}
                 disabled={isPending}
               >
                 <TrendingUp className="h-3.5 w-3.5 mr-1" />
@@ -879,13 +879,22 @@ export default function CampaignsTab() {
   });
 
   const scaleMutation = useMutation({
-    mutationFn: (campaign: Campaign) => {
+    mutationFn: ({ campaign, liveCampaign }: { campaign: Campaign; liveCampaign?: any }) => {
+      // Usa Meta campaign ID (do live ou do DB.metaCampaignId), não o UUID do Prisma.
+      // Escala +20% via endpoint de budget da campanha (não adset).
+      const metaId = liveCampaign?.id || (campaign as any).metaCampaignId;
+      if (!metaId) {
+        return Promise.reject(new Error("Campanha sem Meta ID — não é possível escalar. Lance pelo dashboard primeiro."));
+      }
       const newBudget = Math.round(campaign.dailyBudget * 1.2 * 100) / 100;
-      return api.updateAdsetBudget(campaign.id, newBudget);
+      return api.updateCampaignBudget(metaId, newBudget);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["metaLiveCampaigns"] });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+    },
+    onError: (err: any) => {
+      alert(`Erro ao escalar: ${err?.message || "erro desconhecido"}`);
     },
   });
 
@@ -928,7 +937,7 @@ export default function CampaignsTab() {
               liveCampaign={liveCampaignMap.get(c.id) || liveCampaignMap.get(c.name)}
               onPause={(id) => pauseMutation.mutate(id)}
               onActivate={(id) => activateMutation.mutate(id)}
-              onScale={(camp) => scaleMutation.mutate(camp)}
+              onScale={(camp, live) => scaleMutation.mutate({ campaign: camp, liveCampaign: live })}
               isPending={isPending}
             />
           ))}
@@ -956,7 +965,7 @@ export default function CampaignsTab() {
                 liveCampaign={lc}
                 onPause={(id) => pauseMutation.mutate(id)}
                 onActivate={(id) => activateMutation.mutate(id)}
-                onScale={(camp) => scaleMutation.mutate(camp)}
+                onScale={(camp, live) => scaleMutation.mutate({ campaign: camp, liveCampaign: live })}
                 isPending={isPending}
               />
             ))}

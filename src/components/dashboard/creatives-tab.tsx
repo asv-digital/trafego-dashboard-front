@@ -616,6 +616,14 @@ function ABTestsSection() {
               <DialogTitle className="text-white">Novo Teste A/B</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-2">
+              <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+                <p className="text-sm text-yellow-400 font-medium">Use a aba Lancar com template TESTE_AB</p>
+                <p className="text-xs text-yellow-400/80 mt-1">
+                  Testes A/B criados pelo dashboard usam o Campaign Builder (aba Lancar → tipo "Teste A/B").
+                  Ele cria a campanha completa com 2 ad sets e criativos diferentes automaticamente.
+                  O agente resolve o teste em 5 dias e declara vencedor.
+                </p>
+              </div>
               <div className="space-y-2">
                 <Label className="text-[#ccc]">Nome do teste</Label>
                 <Input
